@@ -6,6 +6,10 @@ e historial de series.
 
 Es una PWA: se instala en el iPhone desde Safari y funciona sin conexión.
 
+**→ [antoniromera.github.io/operacion-cbr](https://antoniromera.github.io/operacion-cbr/)**
+
+<img src="qr.png" width="200" alt="QR a la app">
+
 ## Instalar en el iPhone
 
 1. Abre la web en **Safari** (en Chrome no aparece la opción).
@@ -37,6 +41,7 @@ sw.js                 service worker (caché offline)
 manifest.webmanifest  nombre, iconos y modo pantalla completa
 icons/                iconos generados por tools-mkicons.py
 tools-mkicons.py      regenera los PNG sin dependencias
+tools-qr.py           genera qr.png (QR escrito a mano, sin librerías)
 ```
 
 Al tocar `index.html`, sube `VERSION` en `sw.js` para que se limpie la caché vieja.
