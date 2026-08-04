@@ -5,7 +5,7 @@
    igual en avión que con fibra.
    Sube VERSION cuando cambies index.html y se limpia lo viejo.
    ============================================================ */
-const VERSION = "cbr-v1";
+const VERSION = "cbr-v2";
 const SHELL = [
   "./",
   "index.html",
