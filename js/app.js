@@ -653,7 +653,9 @@ function pintarPerfil() {
   stopAnim();
   const st = P.estadisticas(filas);
   const r = P.racha(filas);
-  const ultimas = [...filas].slice(-10).reverse();
+  const ultimas = [...filas]
+    .sort((a, b) => (b.ts || b.f).localeCompare(a.ts || a.f))
+    .slice(0, 10);
 
   /* Ejercicios ya registrados primero: son los que se vienen a mirar. */
   const entrenados = new Set(filas.map(f => f.ej).filter(Boolean));
