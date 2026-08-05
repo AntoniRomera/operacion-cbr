@@ -5,12 +5,21 @@
    ============================================================ */
 
 :root{
+  /* La app es oscura a propósito: el Sistema no tiene modo claro. Esto
+     le dice al navegador que pinte lo suyo — cursores, selección,
+     rellenos automáticos, barras de desplazamiento — en oscuro también
+     cuando el móvil está en modo claro. Sin esto, los campos del
+     registro salían con los colores del sistema y desentonaban. */
+  color-scheme:dark;
+
   --fondo:#080B11; --panel:#0F1520; --panel2:#161E2C; --linea:#22304A;
   --tinta:#E6EDF7; --apagado:#8395AE; --tenue:#4E6076;
   --sis:#38BDF8; --sis2:#A78BFA; --exito:#34D399; --peligro:#F87171;
   --p25:#C8342E; --p20:#2B5FA8; --p15:#D9A521; --p10:#2E8B57; --p5:#DDE4EA;
   --acero:#8B9AA8;
-  --nav:58px;                      /* alto de la barra inferior, sin el área segura */
+  /* Alto real del pie (descanso + menú + área segura). Lo mide la app al
+     arrancar: depende del móvil y adivinarlo descuadraba el descanso. */
+  --pie:92px;
   --display:"Oswald",-apple-system,sans-serif;
   --texto:"IBM Plex Sans",-apple-system,system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -31,7 +40,7 @@ button{-webkit-user-select:none;user-select:none}
 body{
   background:var(--fondo);color:var(--tinta);
   font-family:var(--texto);font-size:15px;line-height:1.5;
-  padding-bottom:calc(var(--nav) + 40px + env(safe-area-inset-bottom));
+  padding-bottom:calc(var(--pie) + 24px);
   overscroll-behavior-y:none;
   background-image:
     radial-gradient(70% 45% at 50% 0%, rgba(56,189,248,.10), transparent 70%),
@@ -72,17 +81,23 @@ body.puerta-abierta .top{display:none}
 
 .xp__txt{padding-bottom:9px}
 
-/* ---------- barra inferior ---------- */
+/* ---------- pie: descanso y menú, apilados ----------
+   Van juntos en un contenedor fijo en vez de posicionarse cada uno
+   por su cuenta: así el descanso siempre queda justo encima del menú
+   sin depender de ninguna medida escrita a mano. */
+.pie{position:fixed;left:0;right:0;bottom:0;z-index:50}
+
 .nav{
-  position:fixed;left:0;right:0;bottom:0;z-index:45;
   display:grid;grid-template-columns:repeat(4,1fr);
   background:rgba(8,11,17,.94);backdrop-filter:blur(16px);
-  border-top:1px solid var(--linea);padding-bottom:env(safe-area-inset-bottom);
+  border-top:1px solid var(--linea);
+  /* Zona del indicador de inicio: reservada, ahí no puede haber botones. */
+  padding-bottom:env(safe-area-inset-bottom);
 }
 .nav:empty{display:none}
 .nav__b{
   position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;
-  padding:10px 0 9px;background:none;border:0;cursor:pointer;color:var(--tenue);
+  padding:9px 0 7px;background:none;border:0;cursor:pointer;color:var(--tenue);
   font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;
   transition:color .18s;
 }
@@ -468,11 +483,10 @@ body.puerta-abierta .top{display:none}
 .alerta p{margin:0}
 
 /* ---------- descanso ---------- */
-/* Se apoya justo encima de la barra inferior, sin taparla. */
+/* Se apila encima del menú dentro del pie: sin posiciones ni medidas. */
 .descanso{
-  position:fixed;left:0;right:0;z-index:50;background:var(--panel);
-  bottom:calc(var(--nav) + env(safe-area-inset-bottom));
-  border-top:1px solid rgba(56,189,248,.35);border-bottom:1px solid var(--linea);
+  background:var(--panel);
+  border-top:1px solid rgba(56,189,248,.35);
   padding:12px 16px;display:none;align-items:center;gap:14px;
 }
 .descanso.on{display:flex}

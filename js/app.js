@@ -1235,6 +1235,17 @@ document.addEventListener("keydown", e => {
   else if (document.activeElement?.closest(".puerta")) $("crear")?.click();
 });
 
+/* ---------- alto del pie ----------
+   Cuánto ocupa el menú depende del móvil: el área segura del indicador
+   de inicio solo la conoce el navegador. Se mide y se publica como
+   variable, y así el contenido nunca queda debajo ni sobra hueco. Se
+   vuelve a medir sola cuando aparece el descanso o gira la pantalla. */
+function medirPie() {
+  const alto = $("pie").getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--pie", Math.round(alto) + "px");
+}
+new ResizeObserver(medirPie).observe($("pie"));
+
 /* ============================================================
    ARRANQUE
    ============================================================ */
