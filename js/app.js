@@ -18,7 +18,7 @@ let cazador = null;          // perfil activo
 let E = null;                // su estado: semana, pesos, sesión a medias
 let filas = [];              // historial ya cargado
 let desbloqueados = [];      // ids de logros conseguidos
-let vista = "puerta";        // puerta · dia · logros · perfil · manual
+let vista = "puerta";        // puerta · misiones · dia · logros · perfil · manual
 let diaActivo = 1;
 let tecnicaAbierta = null;
 let motor = "";
@@ -122,7 +122,7 @@ async function entrar(id) {
   desbloqueados = (await DB.logros.lista(id)).map(l => l.logro);
   localStorage.setItem(CLAVE_SESION, id);
   document.body.classList.remove("puerta-abierta");
-  vista = "dia";
+  vista = "misiones";
   await revisarLogros();
   pintar();
 }
@@ -152,13 +152,87 @@ function pintarCabecera() {
       <div class="top__sem">SEMANA <b>${E.semana}</b></div>
     </div>
     <div class="xp"><i style="width:${(st.progreso * 100).toFixed(1)}%"></i></div>
-    <div class="xp__txt">${miles(st.enNivel)} / ${miles(st.paraSubir)} XP</div>
-    <div class="tabs" role="tablist">
-      ${RUTINA.dias.map(d => `<button class="tab" role="tab" aria-selected="${vista === "dia" && diaActivo === d.n}" data-dia="${d.n}">${d.n} · ${esc(d.nombre)}</button>`).join("")}
-      <button class="tab tab--otra" role="tab" aria-selected="${vista === "logros"}" data-vista="logros">Logros</button>
-      <button class="tab tab--otra" role="tab" aria-selected="${vista === "perfil"}" data-vista="perfil">Perfil</button>
-      <button class="tab tab--otra" role="tab" aria-selected="${vista === "manual"}" data-vista="manual">Manual</button>
-    </div>`;
+    <div class="xp__txt">${miles(st.enNivel)} / ${miles(st.paraSubir)} XP</div>`;
+}
+
+/* ---------- barra inferior ---------- */
+const ICONOS = {
+  misiones: `<rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/>`,
+  logros:   `<path d="M8 3h8v6a4 4 0 0 1-8 0V3Z"/><path d="M8 5.5H5V7a3 3 0 0 0 3 3"/><path d="M16 5.5h3V7a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8.5 21h7"/>`,
+  perfil:   `<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/>`,
+  manual:   `<path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2V5Z"/><path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2V5Z"/>`
+};
+const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", perfil: "Perfil", manual: "Manual" };
+
+function pintarNav() {
+  const activa = vista === "dia" ? "misiones" : vista;
+  $("nav").innerHTML = Object.keys(ICONOS).map(v => `
+    <button class="nav__b" data-vista="${v}" aria-current="${activa === v}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+           stroke-linecap="round" stroke-linejoin="round">${ICONOS[v]}</svg>
+      <span>${NOMBRE_VISTA[v]}</span>
+    </button>`).join("");
+}
+
+/* ============================================================
+   TABLERO DE MISIONES
+   La portada: qué toca hoy y cómo va la semana de un vistazo.
+   ============================================================ */
+function estadoDia(n) {
+  const hechosSemana = new Set(filas.filter(f => f.semana === E.semana).map(f => f.dia));
+  const d = diaDe(n);
+  const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
+  const marcadas = d.ejercicios.reduce(
+    (a, e) => a + (E.sesion[e.sesionId]?.hechas.filter(Boolean).length || 0), 0);
+  return {
+    dia: d, total, marcadas,
+    hecha: hechosSemana.has(n),
+    enCurso: marcadas > 0
+  };
+}
+
+function pintarMisiones() {
+  stopAnim();
+  const estados = RUTINA.dias.map(d => estadoDia(d.n));
+  const pendiente = estados.find(e => !e.hecha) || estados[0];
+  const restantes = estados.filter(e => e.dia.n !== pendiente.dia.n);
+  const hechas = estados.filter(e => e.hecha).length;
+
+  const tarjeta = (e, destacada) => {
+    const clases = ["tarjeta"];
+    if (destacada) clases.push("tarjeta--destacada");
+    if (e.hecha) clases.push("tarjeta--hecha");
+    else if (e.enCurso) clases.push("tarjeta--curso");
+    const pie = e.hecha ? "Completada"
+              : e.enCurso ? `En curso · ${e.marcadas}/${e.total}`
+              : `${e.dia.ejercicios.length} ejercicios · ${e.total} series`;
+    return `<button class="${clases.join(" ")}" data-mision="${e.dia.n}">
+        <span class="tarjeta__n">${e.dia.n}</span>
+        ${destacada ? `<span class="tarjeta__eti">Siguiente misión</span>` : ""}
+        <h3 class="tarjeta__nom">${esc(e.dia.nombre)}</h3>
+        <span class="tarjeta__lema">${esc(e.dia.lema)}</span>
+        <span class="tarjeta__pie">${pie}</span>
+        ${e.enCurso && !e.hecha ? `<span class="tarjeta__via"><i style="width:${(e.marcadas / e.total * 100).toFixed(0)}%"></i></span>` : ""}
+      </button>`;
+  };
+
+  $("app").innerHTML = `
+    <div class="portada">
+      <div class="portada__cab">Semana ${E.semana}</div>
+      <h2 class="portada__tit">${hechas === RUTINA.dias.length ? "Semana completada" : "Misiones diarias"}</h2>
+      <div class="portada__prog">
+        <span class="portada__puntos">${RUTINA.dias.map((d, i) =>
+          `<i class="${estados[i].hecha ? "on" : ""}"></i>`).join("")}</span>
+        <span class="portada__txt">${hechas} de ${RUTINA.dias.length}</span>
+      </div>
+    </div>
+    <div class="tablero">
+      ${tarjeta(pendiente, true)}
+      ${restantes.map(e => tarjeta(e, false)).join("")}
+    </div>
+    ${hechas === RUTINA.dias.length ? `<div class="acciones">
+      <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
+    </div>` : ""}`;
 }
 
 /* ============================================================
@@ -189,7 +263,13 @@ function pintarDia() {
   const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
   const hechas = d.ejercicios.reduce((a, e) => a + serie(e).hechas.filter(Boolean).length, 0);
 
-  let html = `<div class="mision">
+  const semana = new Set(filas.filter(f => f.semana === E.semana).map(f => f.dia));
+
+  let html = `<div class="saltos">
+      ${RUTINA.dias.map(x => `<button class="salto ${semana.has(x.n) ? "hecha" : ""}"
+        data-dia="${x.n}" aria-current="${x.n === diaActivo}" aria-label="Día ${x.n}">${x.n}</button>`).join("")}
+    </div>
+    <div class="mision">
       <div class="mision__cab">Misión diaria</div>
       <h2 class="mision__tit">${esc(d.nombre)}</h2>
       <div class="mision__lema">${esc(d.lema)}</div>
@@ -424,12 +504,14 @@ function pintarManual() {
    PINTADO GENERAL
    ============================================================ */
 function pintar() {
-  if (!cazador) { $("cabecera").innerHTML = ""; pintarPuerta(); return; }
+  if (!cazador) { $("cabecera").innerHTML = ""; $("nav").innerHTML = ""; pintarPuerta(); return; }
   pintarCabecera();
+  pintarNav();
   if (vista === "logros") pintarLogros();
   else if (vista === "perfil") pintarPerfil();
   else if (vista === "manual") pintarManual();
-  else pintarDia();
+  else if (vista === "dia") pintarDia();
+  else pintarMisiones();
 }
 
 /* ---------- descanso ---------- */
@@ -522,6 +604,8 @@ async function terminarSesion() {
     hora: ahora.getHours(), diasParado
   });
 
+  /* De vuelta al tablero: se ve la misión marcada y qué queda de semana. */
+  vista = "misiones";
   pintar(); window.scrollTo(0, 0);
   if (!nuevos.length) {
     aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg movidos</span>`, "exito");
@@ -578,7 +662,12 @@ document.addEventListener("click", async e => {
   if (!cazador) return;
 
   /* --- navegación --- */
-  if (b.dataset.dia) { diaActivo = +b.dataset.dia; vista = "dia"; tecnicaAbierta = null; pintar(); window.scrollTo(0, 0); return; }
+  if (b.dataset.mision || b.dataset.dia) {
+    diaActivo = +(b.dataset.mision || b.dataset.dia);
+    vista = "dia"; tecnicaAbierta = null;
+    pintar(); window.scrollTo(0, 0);
+    return;
+  }
   if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; pintar(); window.scrollTo(0, 0); return; }
 
   /* --- técnica --- */

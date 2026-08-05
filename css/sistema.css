@@ -10,6 +10,7 @@
   --sis:#38BDF8; --sis2:#A78BFA; --exito:#34D399; --peligro:#F87171;
   --p25:#C8342E; --p20:#2B5FA8; --p15:#D9A521; --p10:#2E8B57; --p5:#DDE4EA;
   --acero:#8B9AA8;
+  --nav:58px;                      /* alto de la barra inferior, sin el área segura */
   --display:"Oswald",-apple-system,sans-serif;
   --texto:"IBM Plex Sans",-apple-system,system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -20,7 +21,7 @@ html,body{margin:0;padding:0}
 body{
   background:var(--fondo);color:var(--tinta);
   font-family:var(--texto);font-size:15px;line-height:1.5;
-  padding-bottom:calc(96px + env(safe-area-inset-bottom));
+  padding-bottom:calc(var(--nav) + 40px + env(safe-area-inset-bottom));
   overscroll-behavior-y:none;
   background-image:
     radial-gradient(70% 45% at 50% 0%, rgba(56,189,248,.10), transparent 70%),
@@ -59,19 +60,96 @@ body.puerta-abierta .top{display:none}
 .xp__txt{font-family:var(--mono);font-size:9.5px;color:var(--tenue);letter-spacing:.09em;
          text-align:right;padding:4px 14px 0}
 
-.tabs{display:flex;gap:6px;padding:8px 12px 11px;overflow-x:auto;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{
-  flex:0 0 auto;border:1px solid var(--linea);background:transparent;color:var(--apagado);
-  border-radius:8px;padding:8px 13px;cursor:pointer;font-family:var(--display);font-size:13px;
-  font-weight:600;letter-spacing:.09em;text-transform:uppercase;
-  transition:background .15s,color .15s,border-color .15s,box-shadow .15s;
+.xp__txt{padding-bottom:9px}
+
+/* ---------- barra inferior ---------- */
+.nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:45;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  background:rgba(8,11,17,.94);backdrop-filter:blur(16px);
+  border-top:1px solid var(--linea);padding-bottom:env(safe-area-inset-bottom);
 }
-.tab[aria-selected="true"]{
-  background:var(--sis);color:#04121C;border-color:var(--sis);
-  box-shadow:0 0 16px rgba(56,189,248,.45);
+.nav:empty{display:none}
+.nav__b{
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:10px 0 9px;background:none;border:0;cursor:pointer;color:var(--tenue);
+  font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;
+  transition:color .18s;
 }
-.tab--otra{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em}
+.nav__b svg{width:22px;height:22px;transition:filter .18s,transform .18s}
+.nav__b[aria-current="true"]{color:var(--sis)}
+.nav__b[aria-current="true"] svg{filter:drop-shadow(0 0 7px rgba(56,189,248,.8));transform:translateY(-1px)}
+.nav__b[aria-current="true"]::before{
+  content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:26px;height:2px;background:var(--sis);border-radius:0 0 2px 2px;
+  box-shadow:0 0 10px var(--sis);
+}
+
+/* ---------- tablero de misiones ---------- */
+.portada{padding:20px 16px 2px}
+.portada__cab{font-family:var(--mono);font-size:10px;color:var(--sis);letter-spacing:.22em;text-transform:uppercase}
+.portada__cab::before{content:"[ "}
+.portada__cab::after{content:" ]"}
+.portada__tit{font-family:var(--display);font-weight:700;font-size:29px;letter-spacing:.02em;
+              text-transform:uppercase;margin:6px 0 0;line-height:1}
+.portada__prog{display:flex;align-items:center;gap:10px;margin-top:11px}
+.portada__puntos{display:flex;gap:5px}
+.portada__puntos i{width:20px;height:3px;border-radius:2px;background:var(--linea)}
+.portada__puntos i.on{background:var(--exito);box-shadow:0 0 8px rgba(52,211,153,.6)}
+.portada__txt{font-family:var(--mono);font-size:10.5px;color:var(--apagado);letter-spacing:.09em;text-transform:uppercase}
+
+.tablero{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 12px 0}
+.tarjeta{
+  position:relative;overflow:hidden;display:flex;flex-direction:column;gap:5px;min-height:118px;
+  padding:13px 12px;text-align:left;cursor:pointer;color:var(--tinta);
+  background:var(--panel);border:1px solid var(--linea);border-radius:5px;
+  transition:border-color .18s,transform .1s;
+}
+.tarjeta:active{transform:scale(.985)}
+.tarjeta__n{
+  position:absolute;right:2px;bottom:-20px;font-family:var(--display);font-size:70px;font-weight:700;
+  line-height:1;color:rgba(230,237,247,.05);pointer-events:none;
+}
+.tarjeta__nom{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:.05em;
+              text-transform:uppercase;margin:0;line-height:1.1}
+.tarjeta__lema{font-size:11.5px;color:var(--sis2);font-style:italic;line-height:1.3}
+.tarjeta__pie{margin-top:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
+              text-transform:uppercase;color:var(--tenue)}
+.tarjeta__via{display:block;height:2px;background:var(--linea);border-radius:2px;overflow:hidden;margin-top:6px}
+.tarjeta__via i{display:block;height:100%;background:var(--sis);box-shadow:0 0 8px var(--sis)}
+.tarjeta__eti{font-family:var(--mono);font-size:9.5px;color:var(--sis);letter-spacing:.2em;text-transform:uppercase}
+.tarjeta__eti::before{content:"[ "}
+.tarjeta__eti::after{content:" ]"}
+
+.tarjeta--curso{border-color:rgba(56,189,248,.5)}
+.tarjeta--hecha{border-color:rgba(52,211,153,.42)}
+.tarjeta--hecha .tarjeta__pie{color:var(--exito)}
+.tarjeta--hecha .tarjeta__pie::before{content:"✓ "}
+.tarjeta--hecha .tarjeta__nom,.tarjeta--hecha .tarjeta__lema{opacity:.65}
+.tarjeta--destacada{
+  grid-column:1/-1;min-height:auto;gap:7px;padding:17px 16px;
+  background:linear-gradient(150deg,rgba(56,189,248,.11),rgba(167,139,250,.05)),var(--panel);
+  border-color:rgba(56,189,248,.42);box-shadow:inset 0 0 34px rgba(56,189,248,.07);
+}
+.tarjeta--destacada::before,.tarjeta--destacada::after{
+  content:"";position:absolute;width:12px;height:12px;border:2px solid var(--sis);
+}
+.tarjeta--destacada::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.tarjeta--destacada::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.tarjeta--destacada .tarjeta__nom{font-size:25px}
+.tarjeta--destacada .tarjeta__lema{font-size:13px}
+.tarjeta--destacada .tarjeta__n{font-size:104px;bottom:-30px;right:8px}
+
+/* ---------- saltar de día dentro de la misión ---------- */
+.saltos{display:flex;gap:7px;padding:14px 16px 0}
+.salto{
+  flex:0 0 auto;width:36px;height:36px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--linea);background:var(--panel2);color:var(--apagado);
+  font-family:var(--mono);font-size:13px;transition:background .15s,color .15s,border-color .15s,box-shadow .15s;
+}
+.salto.hecha{border-color:rgba(52,211,153,.45);color:var(--exito)}
+.salto[aria-current="true"]{background:var(--sis);color:#04121C;border-color:var(--sis);
+                            box-shadow:0 0 14px rgba(56,189,248,.45)}
 
 /* ---------- ventana del Sistema ---------- */
 .vt{
@@ -298,10 +376,12 @@ body.puerta-abierta .top{display:none}
 .alerta p{margin:0}
 
 /* ---------- descanso ---------- */
+/* Se apoya justo encima de la barra inferior, sin taparla. */
 .descanso{
-  position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--panel);
-  border-top:1px solid rgba(56,189,248,.35);
-  padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:none;align-items:center;gap:14px;
+  position:fixed;left:0;right:0;z-index:50;background:var(--panel);
+  bottom:calc(var(--nav) + env(safe-area-inset-bottom));
+  border-top:1px solid rgba(56,189,248,.35);border-bottom:1px solid var(--linea);
+  padding:12px 16px;display:none;align-items:center;gap:14px;
 }
 .descanso.on{display:flex}
 .descanso__t{font-family:var(--mono);font-size:24px;font-weight:600;min-width:66px}
