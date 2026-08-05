@@ -38,10 +38,18 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 const pesoDe = ej => E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
 const escalon = ej => equipo.escalonDe(ej.implemento);
 
+/** Las veces que se registró este ejercicio, en orden de fecha.
+    No vale fiarse del orden de inserción: restaurar una copia puede
+    meter filas viejas después de las nuevas. */
+function historialDe(clave) {
+  return filas.filter(f => f.ej === clave)
+              .sort((a, b) => (a.ts || a.f).localeCompare(b.ts || b.f));
+}
+
 /** La última vez que se registró este ejercicio. */
 function ultimaDe(clave) {
-  for (let i = filas.length - 1; i >= 0; i--) if (filas[i].ej === clave) return filas[i];
-  return null;
+  const h = historialDe(clave);
+  return h.length ? h[h.length - 1] : null;
 }
 
 /**
@@ -469,10 +477,15 @@ function grafica({ nombre, puntos, tipo, color, unidad, sel }) {
     ? izq + banda * (i + 0.5)
     : izq + (n === 1 ? anchoUtil / 2 : anchoUtil * i / (n - 1));
 
-  /* Rejilla recesiva: tres referencias, ni una más.
+  /* Las referencias van en los valores reales, no en el dominio con
+     margen: "51 kg" no significa nada, "50 kg" sí. Rejilla recesiva y
+     tres líneas, ni una más.
      Los colores van en hexadecimal y el resto por clases: las variables
      CSS no se resuelven dentro de los atributos de presentación SVG. */
-  const rejilla = [y0, (y0 + y1) / 2, y1].map(v =>
+  const vMin = Math.min(...vals), vMax = Math.max(...vals);
+  const refs = tipo === "barras" ? [0, vMax] : [vMin, vMax];
+  const corto = v => (v >= 10000 ? Math.round(v / 1000) + "k" : Math.round(v));
+  const rejilla = [...new Set([...refs, (refs[0] + refs[1]) / 2])].map(v =>
     `<line class="graf__rejilla" x1="${izq}" y1="${ejeY(v).toFixed(1)}"
            x2="${w - der}" y2="${ejeY(v).toFixed(1)}"/>`).join("");
 
@@ -526,8 +539,8 @@ function grafica({ nombre, puntos, tipo, color, unidad, sel }) {
       <svg viewBox="0 0 ${w} ${h}" class="graf__svg" role="img"
            aria-label="${nombre}: de ${puntos[0].v}${unidad} el ${diaMes(puntos[0].f)} a ${ultimo.v}${unidad} el ${diaMes(ultimo.f)}">
         ${rejilla}
-        <text class="graf__eje" x="${izq - 5}" y="${(ejeY(y1) + 3).toFixed(1)}" text-anchor="end">${Math.round(y1)}</text>
-        <text class="graf__eje" x="${izq - 5}" y="${(ejeY(y0) + 3).toFixed(1)}" text-anchor="end">${Math.round(y0)}</text>
+        ${[...new Set(refs)].map(v => `<text class="graf__eje" x="${izq - 5}"
+           y="${(ejeY(v) + 3).toFixed(1)}" text-anchor="end">${corto(v)}</text>`).join("")}
         <text class="graf__eje" x="${izq}" y="${h - 6}">${diaMes(puntos[0].f)}</text>
         <text class="graf__eje" x="${w - der}" y="${h - 6}" text-anchor="end">${diaMes(ultimo.f)}</text>
         ${marcas}${etiqueta}${globo}${toques}
@@ -544,7 +557,7 @@ function pintarEjercicio() {
   const ej = EJERCICIOS[clave];
   if (!ej) { vista = "perfil"; pintarPerfil(); return; }
 
-  const mias = filas.filter(f => f.ej === clave);
+  const mias = historialDe(clave);
   const kgActual = E.pesos[clave] ?? ej.kgInicial ?? 0;
   const mejor = mias.reduce((a, f) => Math.max(a, f.kg || 0), 0);
   const volumen = mias.reduce((a, f) => a + (f.volumen || 0), 0);
