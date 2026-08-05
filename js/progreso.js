@@ -47,11 +47,14 @@ export function proximoRango(nivel) {
 
 /* ---------- estadísticas desde el historial ---------- */
 export function estadisticas(filas) {
-  const sesiones = new Set(), ejercicios = new Set();
+  const sesiones = new Map(), ejercicios = new Set();
   let volumen = 0, reps = 0, xp = 0, kgMax = 0;
 
   for (const f of filas) {
-    sesiones.add(`${f.f}|${f.dia}`);
+    /* Los minutos van repetidos en cada fila de la sesión: se toma uno. */
+    const clave = `${f.f}|${f.dia}`;
+    if (!sesiones.has(clave)) sesiones.set(clave, f.minutos || 0);
+    else if (f.minutos) sesiones.set(clave, f.minutos);
     if (f.ej) ejercicios.add(f.ej);
     volumen += f.volumen || 0;
     reps += (f.reps || 0) * (f.series || 0);
@@ -62,22 +65,73 @@ export function estadisticas(filas) {
   }
   /* El bono de misión no está en las filas: se reconstruye por sesión. */
   xp += sesiones.size * XP_MISION;
+  const minutos = [...sesiones.values()].reduce((a, b) => a + b, 0);
 
   return {
-    sesiones: sesiones.size, series: filas.length, volumen, reps, xp, kgMax,
+    sesiones: sesiones.size, series: filas.length, volumen, reps, xp, kgMax, minutos,
     ejerciciosDistintos: ejercicios.size,
     ...nivelDe(xp),
     rango: rangoDe(nivelDe(xp).nivel)
   };
 }
 
+/* ---------- racha ----------
+   Días de gracia entre sesiones: la rutina tiene descansos, así que
+   contar días seguidos castigaría por descansar. Lo que rompe la racha
+   es desaparecer, no tomarse el domingo libre. */
+export const DIAS_GRACIA = 3;
+
+export function racha(filas) {
+  const dias = [...new Set(filas.map(f => f.f))].sort();
+  if (!dias.length) {
+    return { actual: 0, mejor: 0, diasDesde: null, rota: false, enRiesgo: false, margen: DIAS_GRACIA };
+  }
+
+  let cadena = 1, mejor = 1;
+  for (let i = 1; i < dias.length; i++) {
+    const hueco = Math.round((new Date(dias[i]) - new Date(dias[i - 1])) / 86400000);
+    cadena = hueco <= DIAS_GRACIA ? cadena + 1 : 1;
+    mejor = Math.max(mejor, cadena);
+  }
+
+  const hoy = new Date(new Date().toISOString().slice(0, 10));
+  const diasDesde = Math.round((hoy - new Date(dias[dias.length - 1])) / 86400000);
+  const rota = diasDesde > DIAS_GRACIA;
+
+  return {
+    actual: rota ? 0 : cadena,
+    perdida: rota ? cadena : 0,       // lo que había justo antes de romperse
+    mejor, diasDesde, rota,
+    enRiesgo: !rota && diasDesde >= DIAS_GRACIA - 1,
+    margen: Math.max(0, DIAS_GRACIA - diasDesde)
+  };
+}
+
+/** Sesiones agrupadas, de más reciente a más antigua. */
+export function sesiones(filas) {
+  const mapa = new Map();
+  for (const f of filas) {
+    const clave = `${f.f}|${f.dia}`;
+    if (!mapa.has(clave)) mapa.set(clave, { f: f.f, dia: f.dia, volumen: 0, series: 0, minutos: f.minutos || 0, filas: [] });
+    const s = mapa.get(clave);
+    s.volumen += f.volumen || 0;
+    s.series += f.series || 0;
+    if (f.minutos) s.minutos = f.minutos;
+    s.filas.push(f);
+  }
+  return [...mapa.values()].sort((a, b) => (a.f < b.f ? 1 : a.f > b.f ? -1 : b.dia - a.dia));
+}
+
 /** Fuerza, resistencia y demás, en la escala del Sistema. */
-export function atributos(st) {
+export function atributos(st, r = { actual: 0 }) {
+  const horas = st.minutos / 60;
   return [
-    { clave: "FUE", nombre: "Fuerza",      valor: st.kgMax,                             sufijo: " kg" },
-    { clave: "RES", nombre: "Resistencia", valor: st.reps,                              sufijo: " reps" },
-    { clave: "VOL", nombre: "Volumen",     valor: +(st.volumen / 1000).toFixed(1),      sufijo: " t" },
-    { clave: "CON", nombre: "Constancia",  valor: st.sesiones,                          sufijo: " ses." }
+    { clave: "FUE", nombre: "Fuerza",      valor: st.kgMax,                        sufijo: " kg" },
+    { clave: "RES", nombre: "Resistencia", valor: st.reps,                         sufijo: " reps" },
+    { clave: "VOL", nombre: "Volumen",     valor: +(st.volumen / 1000).toFixed(1), sufijo: " t" },
+    { clave: "CON", nombre: "Constancia",  valor: st.sesiones,                     sufijo: " ses." },
+    { clave: "TMP", nombre: "Bajo la barra", valor: horas >= 10 ? Math.round(horas) : +horas.toFixed(1), sufijo: " h" },
+    { clave: "RCH", nombre: "Racha",       valor: r.actual,                        sufijo: r.actual === 1 ? " ses." : " ses." }
   ];
 }
 
@@ -93,6 +147,7 @@ export function contexto({ estado, filas, ultima = null }) {
     semana: estado.semana,
     diasEstaSemana: diasSemana.size,
     tecnicasVistas: (estado.tecnicas || []).length,
+    racha: racha(filas),
     ultima
   };
 }

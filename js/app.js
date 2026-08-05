@@ -21,6 +21,9 @@ let desbloqueados = [];      // ids de logros conseguidos
 let vista = "puerta";        // puerta · misiones · dia · logros · perfil · manual
 let diaActivo = 1;
 let tecnicaAbierta = null;
+let ejercicioActivo = null;      // ficha de ejercicio abierta
+let puntoSel = { tipo: null, i: null };   // punto tocado en una gráfica
+let editando = null;             // id de la fila del historial en edición
 let motor = "";
 
 const CLAVE_SESION = "sistema:cazador";
@@ -34,8 +37,32 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 
 const pesoDe = ej => E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
 const escalon = ej => equipo.escalonDe(ej.implemento);
+
+/** La última vez que se registró este ejercicio. */
+function ultimaDe(clave) {
+  for (let i = filas.length - 1; i >= 0; i--) if (filas[i].ej === clave) return filas[i];
+  return null;
+}
+
+/**
+ * Con qué reps arranca hoy. Si sigues en el mismo peso, donde lo
+ * dejaste: la doble progresión consiste en sumar reps, y empezar
+ * siempre abajo del rango obligaba a subirlas a mano cada serie.
+ * Si has cambiado el peso, se vuelve al principio del rango, que es
+ * justo lo que toca al subir carga.
+ */
+function repsSugeridas(ej, kg) {
+  const u = ultimaDe(ej.clave);
+  return !u || u.kg !== kg ? ej.min : Math.max(ej.min, u.reps);
+}
+
 const serie = ej => {
-  if (!E.sesion[ej.sesionId]) E.sesion[ej.sesionId] = { hechas: Array(ej.series).fill(false), reps: ej.min };
+  if (!E.sesion[ej.sesionId]) {
+    E.sesion[ej.sesionId] = {
+      hechas: Array(ej.series).fill(false),
+      reps: repsSugeridas(ej, pesoDe(ej))
+    };
+  }
   return E.sesion[ej.sesionId];
 };
 
@@ -237,7 +264,11 @@ function pintarMisiones() {
       </button>`;
   };
 
+  const r = P.racha(filas);
+  const st = P.estadisticas(filas);
+
   $("app").innerHTML = `
+    ${penalizacionHTML(r)}
     <div class="portada">
       <div class="portada__cab">Semana ${E.semana}</div>
       <h2 class="portada__tit">${hechas === RUTINA.dias.length ? "Semana completada" : "Misiones diarias"}</h2>
@@ -245,8 +276,13 @@ function pintarMisiones() {
         <span class="portada__puntos">${RUTINA.dias.map((d, i) =>
           `<i class="${estados[i].hecha ? "on" : ""}"></i>`).join("")}</span>
         <span class="portada__txt">${hechas} de ${RUTINA.dias.length}</span>
+        ${r.actual ? `<span class="racha ${r.enRiesgo ? "racha--riesgo" : ""}">Racha ${r.actual}</span>` : ""}
       </div>
+      ${r.enRiesgo ? `<div class="portada__riesgo">
+        ${r.margen === 0 ? "Hoy es el último día para mantener la racha"
+                         : `Queda ${r.margen} día para mantener la racha`}</div>` : ""}
     </div>
+    ${copiaHTML(st)}
     <div class="tablero">
       ${tarjeta(pendiente, true)}
       ${restantes.map(e => tarjeta(e, false)).join("")}
@@ -254,6 +290,31 @@ function pintarMisiones() {
     ${hechas === RUTINA.dias.length ? `<div class="acciones">
       <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
     </div>` : ""}`;
+}
+
+/* La penalización cuenta lo que había, no regaña: el camino de vuelta
+   es entrenar, y eso ya lo sabe quien abre la app. */
+function penalizacionHTML(r) {
+  if (!r.rota || r.perdida < 2) return "";
+  return `<div class="vt vt--penal">
+      <div class="vt__cab">Penalización</div>
+      <p class="vt__txt">Han pasado <b>${r.diasDesde} días</b> desde la última misión
+      y la racha de ${r.perdida} se ha roto.</p>
+      <p class="vt__pie">Tu mejor racha sigue siendo ${r.mejor}. Cualquier misión empieza la siguiente.</p>
+    </div>`;
+}
+
+/* Recordatorio de copia: molesta poco y evita perderlo todo con el móvil. */
+function copiaHTML(st) {
+  const guardadas = E.copia?.sesiones ?? 0;
+  const desde = st.sesiones - guardadas;
+  if (st.sesiones < 3 || desde < 5) return "";
+  return `<button class="tira" id="irACopia">
+      <span class="tira__txt">${guardadas
+        ? `${desde} sesiones sin copia de seguridad`
+        : `${st.sesiones} sesiones y ninguna copia guardada`}</span>
+      <span class="tira__ir">Guardar</span>
+    </button>`;
 }
 
 /* ============================================================
@@ -308,7 +369,7 @@ function pintarDia() {
     html += `<section class="ej">
       <div class="ej__cab">
         <div class="ej__txt">
-          <h3 class="ej__nom">${esc(ej.nombre)}</h3>
+          <h3 class="ej__nom"><button class="ej__link" data-ficha="${ej.clave}">${esc(ej.nombre)}</button></h3>
           <div class="ej__meta">${ej.series} × ${ej.min}–${ej.max}${enSeg ? " s" : " reps"} · RIR 2–3${ej.nota ? ` · <em>${esc(ej.nota)}</em>` : ""}</div>
           <div class="ej__musc">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
           ${E.listos[ej.clave] ? `<span class="marca">Sube el peso</span>` : ""}
@@ -335,6 +396,16 @@ function pintarDia() {
       else if (ej.implemento === "landmine")  html += `<div class="carga__nota">Discos en el extremo · la palanca resta carga real</div>`;
       else if (ej.implemento === "mancuerna") html += `<div class="carga__nota">Único par que tienes · aquí se progresa por reps</div>`;
       else                                    html += `<div class="carga__nota">Disco abrazado o apoyado</div>`;
+
+      /* Entrar en frío a una barra cargada es como se rompe la gente.
+         Los escalones salen de los discos que tienes, no de porcentajes. */
+      if (ej.implemento === "barra" && kg >= 50) {
+        html += `<div class="calienta">
+            <span class="calienta__et">Aproximación</span>
+            ${equipo.aproximacion(kg).map(s =>
+              `<span class="calienta__s">${s.kg}<i>×${s.reps}</i></span>`).join("")}
+          </div>`;
+      }
       html += `</div>`;
     } else {
       html += `<div class="carga carga--corporal">Peso corporal · ~${equipo.cargaReal(ej, 0, cazador.pesoCorporal)} kg efectivos</div>`;
@@ -365,6 +436,169 @@ function pintarDia() {
     const ej = d.ejercicios.find(e => e.sesionId === tecnicaAbierta);
     const host = $("lienzo");
     if (ej?.figura && host) { const fig = buildFigure(ej.figura); host.append(fig.svg); animate(fig); }
+  }
+}
+
+/* ============================================================
+   GRÁFICAS
+   Una serie por gráfica y un solo eje. Peso y volumen no comparten
+   escala, así que van en dos gráficas separadas y nunca en dos ejes
+   de la misma, que es la forma más rápida de mentir con un dibujo.
+   Sin leyenda: el título ya nombra la serie. El último valor va
+   etiquetado, que es el dato que se viene a mirar, y debajo queda
+   siempre la tabla con todos los números.
+   ============================================================ */
+const GRAF = { w: 320, h: 132, izq: 34, der: 48, arr: 14, aba: 24 };
+const diaMes = f => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
+
+function grafica({ nombre, puntos, tipo, color, unidad, sel }) {
+  const { w, h, izq, der, arr, aba } = GRAF;
+  const n = puntos.length;
+  const anchoUtil = w - izq - der, altoUtil = h - arr - aba;
+
+  const vals = puntos.map(p => p.v);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (tipo === "barras") min = 0;
+  if (max === min) max = min + Math.max(1, min * 0.2);
+  const margen = (max - min) * 0.12;
+  const y0 = tipo === "barras" ? 0 : min - margen, y1 = max + margen;
+
+  const ejeY = v => arr + (1 - (v - y0) / (y1 - y0)) * altoUtil;
+  const banda = anchoUtil / n;
+  const ejeX = i => tipo === "barras"
+    ? izq + banda * (i + 0.5)
+    : izq + (n === 1 ? anchoUtil / 2 : anchoUtil * i / (n - 1));
+
+  /* Rejilla recesiva: tres referencias, ni una más.
+     Los colores van en hexadecimal y el resto por clases: las variables
+     CSS no se resuelven dentro de los atributos de presentación SVG. */
+  const rejilla = [y0, (y0 + y1) / 2, y1].map(v =>
+    `<line class="graf__rejilla" x1="${izq}" y1="${ejeY(v).toFixed(1)}"
+           x2="${w - der}" y2="${ejeY(v).toFixed(1)}"/>`).join("");
+
+  let marcas = "";
+  if (tipo === "barras") {
+    const ancho = Math.min(16, banda - 2);          // 2px de aire entre barras
+    const radio = Math.min(4, ancho / 2);
+    marcas = puntos.map((p, i) => {
+      const x = ejeX(i) - ancho / 2, y = ejeY(p.v), alto = Math.max(radio, ejeY(y0) - y);
+      return `<path d="M${x.toFixed(1)} ${(y + alto).toFixed(1)} V${(y + radio).toFixed(1)}
+              a${radio} ${radio} 0 0 1 ${radio} -${radio} h${(ancho - 2 * radio).toFixed(1)}
+              a${radio} ${radio} 0 0 1 ${radio} ${radio} V${(y + alto).toFixed(1)} Z"
+              fill="${color}" opacity="${sel === i ? 1 : .82}"/>`;
+    }).join("");
+  } else {
+    /* Escalonada: el peso no sube en rampa, salta el día que lo cambias. */
+    let d = "";
+    puntos.forEach((p, i) => {
+      const x = ejeX(i), y = ejeY(p.v);
+      d += i === 0 ? `M${x.toFixed(1)} ${y.toFixed(1)}`
+                   : `L${ejeX(i).toFixed(1)} ${ejeY(puntos[i - 1].v).toFixed(1)} L${x.toFixed(1)} ${y.toFixed(1)}`;
+    });
+    marcas = `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>` +
+      puntos.map((p, i) => `<circle class="graf__anillo" cx="${ejeX(i).toFixed(1)}"
+              cy="${ejeY(p.v).toFixed(1)}" r="${sel === i ? 5 : 4}" fill="${color}"/>`).join("");
+  }
+
+  const ultimo = puntos[n - 1];
+  const etiqueta = `<text class="graf__valor" x="${w - der + 7}"
+      y="${(ejeY(ultimo.v) + 3.5).toFixed(1)}">${ultimo.v}${unidad}</text>`;
+
+  /* Aviso del punto tocado: fecha y valor, sin tener que bajar a la tabla. */
+  let globo = "";
+  if (sel != null && puntos[sel]) {
+    const x = ejeX(sel), p = puntos[sel];
+    const ancho = 92, cx = Math.min(Math.max(x - ancho / 2, 2), w - ancho - 2);
+    globo = `<line x1="${x.toFixed(1)}" y1="${arr}" x2="${x.toFixed(1)}" y2="${arr + altoUtil}"
+                   stroke="${color}" stroke-width="1" opacity=".5" stroke-dasharray="2 3"/>
+      <rect class="graf__globo" x="${cx.toFixed(1)}" y="1" width="${ancho}" height="17" rx="3"/>
+      <text class="graf__globoTxt" x="${(cx + ancho / 2).toFixed(1)}" y="13"
+            >${diaMes(p.f)} · ${p.v}${unidad}</text>`;
+  }
+
+  const toques = puntos.map((p, i) =>
+    `<rect x="${(ejeX(i) - banda / 2).toFixed(1)}" y="${arr}" width="${banda.toFixed(1)}"
+           height="${altoUtil}" fill="transparent" data-punto="${i}" data-graf="${tipo}"/>`).join("");
+
+  return `<div class="graf">
+      <div class="graf__cab">${nombre}</div>
+      <svg viewBox="0 0 ${w} ${h}" class="graf__svg" role="img"
+           aria-label="${nombre}: de ${puntos[0].v}${unidad} el ${diaMes(puntos[0].f)} a ${ultimo.v}${unidad} el ${diaMes(ultimo.f)}">
+        ${rejilla}
+        <text class="graf__eje" x="${izq - 5}" y="${(ejeY(y1) + 3).toFixed(1)}" text-anchor="end">${Math.round(y1)}</text>
+        <text class="graf__eje" x="${izq - 5}" y="${(ejeY(y0) + 3).toFixed(1)}" text-anchor="end">${Math.round(y0)}</text>
+        <text class="graf__eje" x="${izq}" y="${h - 6}">${diaMes(puntos[0].f)}</text>
+        <text class="graf__eje" x="${w - der}" y="${h - 6}" text-anchor="end">${diaMes(ultimo.f)}</text>
+        ${marcas}${etiqueta}${globo}${toques}
+      </svg>
+    </div>`;
+}
+
+/* ============================================================
+   FICHA DE EJERCICIO
+   ============================================================ */
+function pintarEjercicio() {
+  stopAnim();
+  const clave = ejercicioActivo;
+  const ej = EJERCICIOS[clave];
+  if (!ej) { vista = "perfil"; pintarPerfil(); return; }
+
+  const mias = filas.filter(f => f.ej === clave);
+  const kgActual = E.pesos[clave] ?? ej.kgInicial ?? 0;
+  const mejor = mias.reduce((a, f) => Math.max(a, f.kg || 0), 0);
+  const volumen = mias.reduce((a, f) => a + (f.volumen || 0), 0);
+
+  const puntosPeso = mias.map(f => ({ f: f.f, v: f.kg }));
+  const puntosVol = mias.map(f => ({ f: f.f, v: Math.round(f.volumen) }));
+
+  const hayGraficas = mias.length >= 2;
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">${esc(ej.grupo)} · ${esc(ej.patron)}</div>
+      <h2 class="mision__tit">${esc(ej.nombre)}</h2>
+      <div class="ej__musc" style="margin-top:9px">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
+    </div>
+
+    <div class="atributos">
+      <div class="atr"><span class="atr__cl">AHORA</span><span class="atr__val">${kgActual}${ej.implemento === "corporal" ? "" : " kg"}</span><span class="atr__nom">Carga actual</span></div>
+      <div class="atr"><span class="atr__cl">TOPE</span><span class="atr__val">${mejor || "—"}${mejor ? " kg" : ""}</span><span class="atr__nom">Mejor marca</span></div>
+      <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${mias.length}</span><span class="atr__nom">Sesiones</span></div>
+      <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Acumulado</span></div>
+    </div>
+
+    ${hayGraficas ? `
+      ${grafica({ nombre: "Carga por sesión", puntos: puntosPeso, tipo: "linea",
+                  color: "#38BDF8", unidad: " kg", sel: puntoSel.tipo === "linea" ? puntoSel.i : null })}
+      ${grafica({ nombre: "Volumen por sesión", puntos: puntosVol, tipo: "barras",
+                  color: "#A78BFA", unidad: " kg", sel: puntoSel.tipo === "barras" ? puntoSel.i : null })}`
+    : `<div class="vt"><div class="vt__cab">Evolución</div>
+        <p class="vt__txt">${mias.length === 1
+          ? "Con una sesión no hay evolución que dibujar. A la siguiente aparece la gráfica."
+          : "Aún no has registrado este ejercicio."}</p></div>`}
+
+    <div class="vt">
+      <div class="vt__cab">Técnica</div>
+      <div id="lienzo" class="lienzo"></div>
+      <ul class="claves">${ej.claves.map(c => {
+        const riesgo = c.startsWith("!");
+        return `<li class="${riesgo ? "riesgo" : ""}">${esc(riesgo ? c.slice(1) : c)}</li>`;
+      }).join("")}</ul>
+    </div>
+
+    ${mias.length ? `<div class="vt">
+      <div class="vt__cab">Registro</div>
+      <table class="tabla">
+        <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>Volumen</th></tr>
+        ${[...mias].reverse().map(f => `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
+          <td>${f.series}×${f.reps}</td><td>${miles(f.volumen)} kg</td></tr>`).join("")}
+      </table>
+    </div>` : ""}`;
+
+  if (ej.figura) {
+    const host = $("lienzo");
+    if (host) { const fig = buildFigure(ej.figura); host.append(fig.svg); animate(fig); }
   }
 }
 
@@ -405,7 +639,35 @@ function pintarLogros() {
 function pintarPerfil() {
   stopAnim();
   const st = P.estadisticas(filas);
-  const ultimas = [...filas].slice(-8).reverse();
+  const r = P.racha(filas);
+  const ultimas = [...filas].slice(-10).reverse();
+
+  /* Ejercicios ya registrados primero: son los que se vienen a mirar. */
+  const entrenados = new Set(filas.map(f => f.ej).filter(Boolean));
+  const arsenal = Object.entries(EJERCICIOS)
+    .map(([clave, e]) => ({ clave, ...e, veces: filas.filter(f => f.ej === clave).length }))
+    .sort((a, b) => b.veces - a.veces || a.nombre.localeCompare(b.nombre));
+
+  const editor = f => `<tr class="fila-edit"><td colspan="5">
+      <div class="edit">
+        <div class="edit__campo"><span>Carga</span>
+          <button class="mini" data-editar="${f.id}" data-campo="kg" data-dir="-1">−</button>
+          <b>${f.kg} kg</b>
+          <button class="mini" data-editar="${f.id}" data-campo="kg" data-dir="1">+</button>
+        </div>
+        <div class="edit__campo"><span>Series</span>
+          <button class="mini" data-editar="${f.id}" data-campo="series" data-dir="-1">−</button>
+          <b>${f.series}</b>
+          <button class="mini" data-editar="${f.id}" data-campo="series" data-dir="1">+</button>
+        </div>
+        <div class="edit__campo"><span>Reps</span>
+          <button class="mini" data-editar="${f.id}" data-campo="reps" data-dir="-1">−</button>
+          <b>${f.reps}</b>
+          <button class="mini" data-editar="${f.id}" data-campo="reps" data-dir="1">+</button>
+        </div>
+        <button class="btn btn--fantasma btn--peligro" data-borrar="${f.id}">Borrar esta línea</button>
+      </div>
+    </td></tr>`;
 
   $("app").innerHTML = `
     <div class="mision">
@@ -415,12 +677,31 @@ function pintarPerfil() {
     </div>
 
     <div class="atributos">
-      ${P.atributos(st).map(a => `
+      ${P.atributos(st, r).map(a => `
         <div class="atr">
           <span class="atr__cl">${a.clave}</span>
           <span class="atr__val">${a.valor}${a.sufijo}</span>
           <span class="atr__nom">${a.nombre}</span>
         </div>`).join("")}
+    </div>
+
+    ${r.mejor ? `<div class="vt">
+      <div class="vt__cab">Racha</div>
+      <p class="vt__txt">${r.rota
+        ? `Sin entrenar desde hace <b>${r.diasDesde} días</b>. La racha está a cero.`
+        : `<b>${r.actual} sesiones</b> seguidas sin dejar pasar más de ${P.DIAS_GRACIA} días.`}
+        Tu mejor marca son <b>${r.mejor}</b>.</p>
+      <p class="vt__pie">Cuentan los días entre sesiones, no los días seguidos:
+      descansar forma parte del plan, desaparecer no.</p>
+    </div>` : ""}
+
+    <div class="vt">
+      <div class="vt__cab">Arsenal</div>
+      <div class="arsenal">${arsenal.map(e => `
+        <button class="arma ${entrenados.has(e.clave) ? "" : "arma--nueva"}" data-ficha="${e.clave}">
+          <span class="arma__nom">${esc(e.nombre)}</span>
+          <span class="arma__meta">${esc(e.grupo)}${e.veces ? ` · ${e.veces} ses.` : " · sin estrenar"}</span>
+        </button>`).join("")}</div>
     </div>
 
     <div class="vt">
@@ -436,20 +717,29 @@ function pintarPerfil() {
 
     ${ultimas.length ? `<div class="vt">
       <div class="vt__cab">Últimas series</div>
-      <table class="tabla">
-        <tr><th>Fecha</th><th>Ejercicio</th><th>Carga</th><th>Series</th></tr>
-        ${ultimas.map(f => `<tr><td>${f.f.slice(5)}</td><td>${esc(f.nombre)}</td><td>${f.kg} kg</td><td>${f.series}×${f.reps}</td></tr>`).join("")}
+      <p class="vt__pie" style="margin:0 0 8px">Toca una línea para corregirla o borrarla.</p>
+      <table class="tabla tabla--editable">
+        <tr><th>Fecha</th><th>Ejercicio</th><th>Carga</th><th>Series</th><th></th></tr>
+        ${ultimas.map(f => `
+          <tr class="${editando === f.id ? "fila--abierta" : ""}" data-fila="${f.id}">
+            <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}</td><td>${f.kg} kg</td>
+            <td>${f.series}×${f.reps}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
+          </tr>
+          ${editando === f.id ? editor(f) : ""}`).join("")}
       </table>
     </div>` : ""}
 
     <div class="vt">
       <div class="vt__cab">Datos</div>
       <p class="vt__txt">Motor: <code>${motor}</code> · <b>${filas.length}</b> series guardadas en este móvil.</p>
-      <p class="vt__txt">Si borras el icono de la pantalla de inicio o limpias Safari, se va todo. La copia es un archivo: guárdalo donde quieras.</p>
+      <p class="vt__txt">${E.copia
+        ? `Última copia: <b>${E.copia.fecha}</b>, con ${E.copia.sesiones} sesiones.`
+        : "Todavía no has guardado ninguna copia."}
+        Si borras el icono de la pantalla de inicio o limpias Safari, se va todo.</p>
       <div class="acciones">
-        <button class="btn" id="expCsv">Exportar historial (CSV)</button>
         <button class="btn" id="expJson">Descargar copia de seguridad</button>
         <button class="btn" id="impJson">Restaurar copia</button>
+        <button class="btn" id="expCsv">Exportar historial (CSV)</button>
         <button class="btn" id="semana">Empezar semana ${E.semana + 1}</button>
         <button class="btn btn--fantasma" id="cambiarFicha">Cambiar de cazador</button>
       </div>
@@ -534,28 +824,41 @@ function pintar() {
   if (vista === "logros") pintarLogros();
   else if (vista === "perfil") pintarPerfil();
   else if (vista === "manual") pintarManual();
+  else if (vista === "ejercicio") pintarEjercicio();
   else if (vista === "dia") pintarDia();
   else pintarMisiones();
 }
 
-/* ---------- descanso ---------- */
-let idDescanso = null, quedan = 0, totalDescanso = 0;
+/* ---------- descanso ----------
+   Contra el reloj, no contando tics: al bloquear la pantalla o irte a
+   otra app, el navegador congela los temporizadores y el descanso se
+   quedaba parado. Guardando la hora de fin, al volver sale la cuenta
+   de verdad aunque no haya corrido nada mientras tanto. */
+let idDescanso = null, finDescanso = 0, totalDescanso = 0;
+
 function empezarDescanso(seg) {
   clearInterval(idDescanso);
-  quedan = totalDescanso = seg;
+  totalDescanso = seg;
+  finDescanso = Date.now() + seg * 1000;
   $("descanso").classList.add("on");
   ticDescanso();
-  idDescanso = setInterval(() => { quedan--; ticDescanso(); if (quedan <= 0) acabarDescanso(true); }, 1000);
+  idDescanso = setInterval(ticDescanso, 250);
 }
 function ticDescanso() {
-  $("descansoT").textContent = mmss(Math.max(quedan, 0));
-  $("descansoF").style.width = (Math.max(quedan, 0) / totalDescanso * 100) + "%";
+  const quedan = Math.max(0, Math.ceil((finDescanso - Date.now()) / 1000));
+  $("descansoT").textContent = mmss(quedan);
+  $("descansoF").style.width = (quedan / totalDescanso * 100) + "%";
+  if (quedan <= 0) acabarDescanso(true);
 }
 function acabarDescanso(completo) {
   clearInterval(idDescanso); idDescanso = null;
   $("descanso").classList.remove("on");
   if (completo) { try { navigator.vibrate?.([120, 60, 120]); } catch (e) {} }
 }
+/* Al volver a la app, recalcular ya: puede que el descanso haya acabado. */
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && idDescanso) ticDescanso();
+});
 
 /* ---------- guardar ---------- */
 const guardar = () => DB.estado.guardar(E);
@@ -592,6 +895,13 @@ async function cerrarSesion() {
   const nuevas = [];
   let subidas = 0, volumen = 0, xp = 0, completa = true;
   const fecha = hoy(), ahora = new Date();
+  const antes = P.estadisticas(filas);
+
+  /* Duración real, si se marcó alguna serie. Más de cinco horas es que
+     la app se quedó abierta toda la tarde: mejor no guardar nada que
+     guardar una mentira. */
+  const brutos = E.iniciada ? Math.round((ahora - new Date(E.iniciada)) / 60000) : null;
+  const minutos = brutos != null && brutos > 0 && brutos <= 300 ? brutos : null;
 
   for (const ej of d.ejercicios) {
     const st = serie(ej);
@@ -613,7 +923,7 @@ async function cerrarSesion() {
     nuevas.push({
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-      implemento: ej.implemento, kg, carga,
+      implemento: ej.implemento, kg, carga, minutos,
       series: hechas, reps: st.reps, volumen: vol, xp: xpEj
     });
     volumen += vol; xp += xpEj;
@@ -630,18 +940,28 @@ async function cerrarSesion() {
   await DB.historial.anadir(nuevas);
   filas.push(...nuevas);
   tecnicaAbierta = null;
+  E.iniciada = null;
   await guardar();
+
+  /* El orden de los avisos importa: primero lo gordo. */
+  const despues = P.estadisticas(filas);
+  if (despues.rango !== antes.rango) {
+    aviso(`<b>Ascenso de rango</b><span>Rango ${despues.rango}</span>`, "rango");
+  } else if (despues.nivel > antes.nivel) {
+    aviso(`<b>Subida de nivel</b><span>Nivel ${despues.nivel}</span>`, "nivel");
+  }
 
   const nuevos = await revisarLogros({
     dia: d.n, volumen, series: nuevas.length, subidas, completa,
-    hora: ahora.getHours(), diasParado
+    hora: ahora.getHours(), diasParado, minutos
   });
 
   /* De vuelta al tablero: se ve la misión marcada y qué queda de semana. */
   vista = "misiones";
   pintar(); window.scrollTo(0, 0);
-  if (!nuevos.length) {
-    aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg movidos</span>`, "exito");
+  if (!nuevos.length && despues.nivel === antes.nivel) {
+    const tiempo = minutos ? ` · ${minutos} min` : "";
+    aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
   }
   if (subidas) {
     setTimeout(() => aviso(`${subidas} ejercicio${subidas > 1 ? "s" : ""} listo${subidas > 1 ? "s" : ""} para subir peso`), 600);
@@ -729,7 +1049,14 @@ document.addEventListener("click", async e => {
     pintar(); window.scrollTo(0, 0);
     return;
   }
-  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; pintar(); window.scrollTo(0, 0); return; }
+  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; pintar(); window.scrollTo(0, 0); return; }
+  if (b.dataset.ficha) {
+    ejercicioActivo = b.dataset.ficha;
+    puntoSel = { tipo: null, i: null };
+    vista = "ejercicio"; pintar(); window.scrollTo(0, 0);
+    return;
+  }
+  if (b.id === "irACopia") { vista = "perfil"; pintar(); window.scrollTo(0, 0); return; }
 
   /* --- técnica --- */
   if (b.dataset.tecnica) {
@@ -751,6 +1078,9 @@ document.addEventListener("click", async e => {
     if (i >= 0 && i < pasos.length) {
       E.pesos[ej.clave] = pasos[i];
       E.listos[ej.clave] = false;
+      /* Cambiar de peso antes de empezar recoloca las reps de partida. */
+      const st = serie(ej);
+      if (!st.hechas.some(Boolean)) st.reps = repsSugeridas(ej, pasos[i]);
       await guardar();
       repintarQuieto();
     }
@@ -772,6 +1102,8 @@ document.addEventListener("click", async e => {
     const ej = diaDe(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.serie);
     const st = serie(ej), k = +b.dataset.k;
     st.hechas[k] = !st.hechas[k];
+    /* La primera serie marcada arranca el cronómetro de la sesión. */
+    if (st.hechas[k] && !E.iniciada) E.iniciada = new Date().toISOString();
     await guardar();
     repintarQuieto();
     if (st.hechas[k]) empezarDescanso(+b.dataset.descanso);
@@ -782,7 +1114,45 @@ document.addEventListener("click", async e => {
   if (b.id === "terminar") { await terminarSesion(); return; }
   if (b.id === "vaciar") {
     diaDe(diaActivo).ejercicios.forEach(ej => delete E.sesion[ej.sesionId]);
+    E.iniciada = null;
     await guardar(); pintar(); aviso("Día vaciado");
+    return;
+  }
+
+  /* --- corregir una serie ya guardada --- */
+  if (b.dataset.editar) {
+    const f = filas.find(x => x.id === +b.dataset.editar);
+    if (!f) return;
+    const dir = +b.dataset.dir, ej = EJERCICIOS[f.ej];
+    if (b.dataset.campo === "kg") {
+      const pasos = ej ? equipo.escalonDe(ej.implemento) : [];
+      if (pasos.length > 1) {
+        const i = Math.min(pasos.length - 1, Math.max(0, pasos.indexOf(f.kg) + dir));
+        f.kg = pasos[i];
+      } else {
+        f.kg = Math.max(0, f.kg + dir * 5);
+      }
+      f.carga = ej ? equipo.cargaReal(ej, f.kg, cazador.pesoCorporal) : f.kg;
+    }
+    if (b.dataset.campo === "series") f.series = Math.max(1, f.series + dir);
+    if (b.dataset.campo === "reps")   f.reps   = Math.max(1, f.reps + dir);
+    /* Volumen y XP se recalculan: si no, la corrección mentiría en el nivel. */
+    f.volumen = f.carga * f.series * f.reps;
+    f.xp = P.xpDeSerie(f.carga, f.reps) * f.series;
+    await DB.historial.guardar(f);
+    repintarQuieto();
+    return;
+  }
+
+  if (b.dataset.borrar) {
+    const id = +b.dataset.borrar;
+    const f = filas.find(x => x.id === id);
+    if (!f || !confirm(`¿Borrar ${f.nombre} del ${f.f}?`)) return;
+    await DB.historial.borrar(id);
+    filas = filas.filter(x => x.id !== id);
+    editando = null;
+    pintar();
+    aviso("Línea borrada");
     return;
   }
   if (b.id === "semana") { E.semana++; await guardar(); await revisarLogros(); pintar(); aviso("Semana " + E.semana); return; }
@@ -799,10 +1169,34 @@ document.addEventListener("click", async e => {
   if (b.id === "expJson") {
     const c = await DB.copia.exportar(cazador.id);
     bajar(`sistema-${cazador.nombre.toLowerCase().replace(/\W+/g, "-")}-${hoy()}.json`, JSON.stringify(c), "application/json");
+    E.copia = { fecha: hoy(), sesiones: P.estadisticas(filas).sesiones };
+    await guardar();
+    repintarQuieto();
     aviso("Copia descargada");
     return;
   }
   if (b.id === "impJson") { $("ficheroCopia").click(); return; }
+});
+
+/* Toques que no son botones: los puntos de las gráficas y las filas
+   del historial, que son celdas de tabla. */
+document.addEventListener("click", e => {
+  if (!cazador || vista === "puerta") return;
+
+  const punto = e.target.closest("[data-punto]");
+  if (punto) {
+    const i = +punto.dataset.punto, tipo = punto.dataset.graf;
+    puntoSel = puntoSel.tipo === tipo && puntoSel.i === i ? { tipo: null, i: null } : { tipo, i };
+    repintarQuieto();
+    return;
+  }
+
+  const fila = e.target.closest("tr[data-fila]");
+  if (fila) {
+    const id = +fila.dataset.fila;
+    editando = editando === id ? null : id;
+    repintarQuieto();
+  }
 });
 
 document.addEventListener("change", async e => {

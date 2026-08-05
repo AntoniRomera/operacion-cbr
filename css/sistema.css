@@ -150,6 +150,86 @@ body.puerta-abierta .top{display:none}
 .tarjeta--destacada .tarjeta__lema{font-size:13px}
 .tarjeta--destacada .tarjeta__n{font-size:104px;bottom:-30px;right:8px}
 
+/* ---------- racha y penalización ---------- */
+.racha{
+  margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--exito);border:1px solid rgba(52,211,153,.45);border-radius:4px;padding:3px 8px;
+  background:rgba(52,211,153,.08);
+}
+.racha--riesgo{color:var(--p15);border-color:rgba(217,165,33,.5);background:rgba(217,165,33,.08)}
+.portada__riesgo{
+  margin-top:9px;font-family:var(--mono);font-size:10.5px;color:var(--p15);letter-spacing:.05em;
+}
+.vt--penal{border-color:rgba(248,113,113,.42);
+           background:linear-gradient(160deg,rgba(248,113,113,.08),transparent),var(--panel)}
+.vt--penal::before,.vt--penal::after{border-color:var(--peligro)}
+.vt--penal .vt__cab{color:var(--peligro)}
+
+/* ---------- tira de aviso de copia ---------- */
+.tira{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;width:calc(100% - 24px);
+  margin:14px 12px 0;padding:11px 13px;cursor:pointer;text-align:left;
+  background:var(--panel);border:1px solid rgba(217,165,33,.4);border-left:2px solid var(--p15);
+  border-radius:4px;color:var(--tinta);
+}
+.tira__txt{font-family:var(--mono);font-size:11.5px;color:#D9C79A;letter-spacing:.02em}
+.tira__ir{font-family:var(--display);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--p15);white-space:nowrap}
+
+/* ---------- gráficas ---------- */
+.graf{margin:12px 12px 0;padding:13px 10px 6px;background:var(--panel);
+      border:1px solid var(--linea);border-radius:4px}
+.graf__cab{font-family:var(--mono);font-size:10px;color:var(--apagado);letter-spacing:.16em;
+           text-transform:uppercase;margin:0 4px 4px}
+.graf__svg{display:block;width:100%;height:auto;overflow:visible}
+.graf__svg text{font-family:var(--mono)}
+.graf__rejilla{stroke:var(--linea);stroke-width:1;opacity:.55}
+.graf__eje{fill:var(--tenue);font-size:9px}
+.graf__valor{fill:var(--tinta);font-size:11px;font-weight:600}
+.graf__anillo{stroke:var(--panel);stroke-width:2}
+.graf__globo{fill:var(--panel2);stroke:var(--linea)}
+.graf__globoTxt{fill:var(--tinta);font-size:10px}
+.lienzo{border:1px solid var(--linea);border-radius:4px;background:#070A10;margin-bottom:10px}
+
+/* ---------- arsenal ---------- */
+.arsenal{display:flex;flex-direction:column;gap:6px}
+.arma{
+  display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;cursor:pointer;
+  padding:10px 11px;background:var(--panel2);border:1px solid var(--linea);border-radius:4px;color:var(--tinta);
+}
+.arma:active{border-color:var(--sis)}
+.arma--nueva{opacity:.55}
+.arma__nom{font-family:var(--display);font-size:14px;letter-spacing:.05em;text-transform:uppercase}
+.arma__meta{font-family:var(--mono);font-size:10px;color:var(--tenue);letter-spacing:.06em}
+
+/* ---------- series de aproximación ---------- */
+.calienta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px}
+.calienta__et{font-family:var(--mono);font-size:9.5px;color:var(--tenue);letter-spacing:.14em;
+              text-transform:uppercase;margin-right:2px}
+.calienta__s{
+  font-family:var(--mono);font-size:11px;color:var(--apagado);
+  border:1px dashed var(--linea);border-radius:4px;padding:3px 7px;
+}
+.calienta__s i{font-style:normal;color:var(--tenue);margin-left:3px}
+
+/* ---------- nombre del ejercicio como enlace a su ficha ---------- */
+.ej__link{
+  padding:0;border:0;background:none;cursor:pointer;color:inherit;font:inherit;
+  letter-spacing:inherit;text-transform:inherit;text-align:left;
+}
+.ej__link::after{content:" ›";color:var(--sis)}
+
+/* ---------- corregir series ---------- */
+.tabla--editable tr[data-fila]{cursor:pointer}
+.tabla__ir{text-align:right;color:var(--tenue);width:22px}
+.fila--abierta td{color:var(--sis)}
+.fila-edit td{padding:0}
+.edit{display:flex;flex-wrap:wrap;gap:9px;padding:11px 6px 13px}
+.edit__campo{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px}
+.edit__campo span{color:var(--tenue);letter-spacing:.08em;text-transform:uppercase;font-size:9.5px}
+.edit__campo b{min-width:44px;text-align:center;font-size:13px}
+.btn--peligro{color:var(--peligro);border-color:rgba(248,113,113,.4);font-size:12px;padding:11px}
+
 /* ---------- saltar de día dentro de la misión ---------- */
 .saltos{display:flex;gap:7px;padding:14px 16px 0}
 .salto{
@@ -424,6 +504,11 @@ body.puerta-abierta .top{display:none}
 .aviso.logro b{color:var(--sis2)}
 .aviso.exito{border-color:var(--exito);box-shadow:0 0 30px rgba(52,211,153,.3)}
 .aviso.exito b{color:var(--exito)}
+.aviso.nivel{border-color:var(--sis);box-shadow:0 0 36px rgba(56,189,248,.5)}
+.aviso.nivel span{font-size:21px}
+.aviso.rango{border-color:var(--p15);box-shadow:0 0 40px rgba(217,165,33,.5)}
+.aviso.rango b{color:var(--p15)}
+.aviso.rango span{font-size:23px}
 
 :focus-visible{outline:2px solid var(--sis);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.disco{animation:none}.aviso{transition:opacity .2s}}

@@ -38,6 +38,11 @@ export const LOGROS = [
     desc: "Cinco sesiones terminadas.",
     cond: c => c.sesiones >= 5 },
 
+  { id: "constante", rango: "D", icono: "⟲",
+    nombre: "Sin bajar el ritmo",
+    desc: "Racha de cinco sesiones seguidas.",
+    cond: c => c.racha.actual >= 5 },
+
   { id: "tressemana", rango: "D", icono: "⋯",
     nombre: "Sin penalización",
     desc: "Tres días distintos en la misma semana.",
@@ -89,6 +94,16 @@ export const LOGROS = [
     desc: "Cien series registradas en el historial.",
     cond: c => c.series >= 100 },
 
+  { id: "imparable", rango: "C", icono: "⟳",
+    nombre: "Imparable",
+    desc: "Racha de quince sesiones seguidas.",
+    cond: c => c.racha.actual >= 15 },
+
+  { id: "reloj", rango: "C", icono: "◷",
+    nombre: "Diez horas bajo la barra",
+    desc: "Acumula diez horas de entreno.",
+    cond: c => c.minutos >= 600 },
+
   /* ---------- rango B ---------- */
   { id: "tresdigitos", rango: "B", icono: "◆",
     nombre: "Tres dígitos",
@@ -130,6 +145,11 @@ export const LOGROS = [
     nombre: "Ejército de sombras",
     desc: "Quinientas series registradas.",
     cond: c => c.series >= 500 },
+
+  { id: "inquebrantable", rango: "A", icono: "⬟",
+    nombre: "Inquebrantable",
+    desc: "Racha de cuarenta sesiones seguidas.",
+    cond: c => c.racha.actual >= 40 },
 
   /* ---------- rango S ---------- */
   { id: "monarca", rango: "S", icono: "♛",
