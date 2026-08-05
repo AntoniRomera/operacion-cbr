@@ -27,6 +27,34 @@ let editando = null;             // id de la fila del historial en edición
 let motor = "";
 
 const CLAVE_SESION = "sistema:cazador";
+const CLAVE_TEMA = "sistema:tema";
+
+/* ---------- tema ----------
+   El <head> ya resolvió el tema antes de pintar; aquí solo se cambia.
+   Las gráficas llevan los colores dentro del SVG, así que al cambiar
+   hay que repintar: no basta con que el CSS se actualice solo. */
+const temaGuardado = () => { try { return localStorage.getItem(CLAVE_TEMA) || "auto"; } catch (e) { return "auto"; } };
+const temaDelMovil = () => matchMedia("(prefers-color-scheme: light)").matches ? "claro" : "oscuro";
+
+function aplicarTema(preferencia) {
+  const tema = preferencia === "auto" ? temaDelMovil() : preferencia;
+  document.documentElement.dataset.tema = tema;
+  const meta = $("metaTema");
+  if (meta) meta.content = tema === "claro" ? "#EEF2F7" : "#080B11";
+}
+
+function ponerTema(preferencia) {
+  try { localStorage.setItem(CLAVE_TEMA, preferencia); } catch (e) {}
+  aplicarTema(preferencia);
+  pintar();
+}
+
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+  if (temaGuardado() === "auto") { aplicarTema("auto"); pintar(); }
+});
+
+/** Color resuelto de una variable, para meterlo en atributos SVG. */
+const colorDe = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
 /* ---------- utilidades ---------- */
 const $ = id => document.getElementById(id);
@@ -583,9 +611,9 @@ function pintarEjercicio() {
 
     ${hayGraficas ? `
       ${grafica({ nombre: "Carga por sesión", puntos: puntosPeso, tipo: "linea",
-                  color: "#38BDF8", unidad: " kg", sel: puntoSel.tipo === "linea" ? puntoSel.i : null })}
+                  color: colorDe("--sis"), unidad: " kg", sel: puntoSel.tipo === "linea" ? puntoSel.i : null })}
       ${grafica({ nombre: "Volumen por sesión", puntos: puntosVol, tipo: "barras",
-                  color: "#A78BFA", unidad: " kg", sel: puntoSel.tipo === "barras" ? puntoSel.i : null })}`
+                  color: colorDe("--sis2"), unidad: " kg", sel: puntoSel.tipo === "barras" ? puntoSel.i : null })}`
     : `<div class="vt"><div class="vt__cab">Evolución</div>
         <p class="vt__txt">${mias.length === 1
           ? "Con una sesión no hay evolución que dibujar. A la siguiente aparece la gráfica."
@@ -743,6 +771,17 @@ function pintarPerfil() {
           ${editando === f.id ? editor(f) : ""}`).join("")}
       </table>
     </div>` : ""}
+
+    <div class="vt">
+      <div class="vt__cab">Aspecto</div>
+      <p class="vt__txt">En automático sigue lo que tenga puesto el móvil.
+      La cabecera y el menú se quedan oscuros siempre: encima va la hora
+      y la batería del iPhone, en blanco.</p>
+      <div class="tema">
+        ${[["auto", "Automático"], ["oscuro", "Oscuro"], ["claro", "Claro"]].map(([v, n]) =>
+          `<button class="tema__b" data-tema="${v}" aria-pressed="${temaGuardado() === v}">${n}</button>`).join("")}
+      </div>
+    </div>
 
     <div class="vt">
       <div class="vt__cab">Datos</div>
@@ -1072,6 +1111,7 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.id === "irACopia") { vista = "perfil"; pintar(); window.scrollTo(0, 0); return; }
+  if (b.dataset.tema) { ponerTema(b.dataset.tema); return; }
 
   /* --- técnica --- */
   if (b.dataset.tecnica) {

@@ -25,30 +25,30 @@ export function buildFigure(figKey){
     const [kind, args] = g.split(":");
     const n = (args||"").split(",").map(Number);
     if(kind === "floor"){
-      gStatic.append(el("line", { x1:0, y1:134.5, x2:200, y2:134.5, stroke:"#3B4854", "stroke-width":1.5 }));
+      gStatic.append(el("line", { class:"fig-suelo", x1:0, y1:134.5, x2:200, y2:134.5, "stroke-width":1.5 }));
     }
     if(kind === "bench"){
-      gStatic.append(el("rect", { x:n[0], y:n[2], width:n[1]-n[0], height:7, rx:2, fill:"#2C3742" }));
-      gStatic.append(el("line", { x1:n[0]+6, y1:n[2]+7, x2:n[0]+6, y2:134, stroke:"#2C3742", "stroke-width":4 }));
-      gStatic.append(el("line", { x1:n[1]-6, y1:n[2]+7, x2:n[1]-6, y2:134, stroke:"#2C3742", "stroke-width":4 }));
+      gStatic.append(el("rect", { class:"fig-hierro-f", x:n[0], y:n[2], width:n[1]-n[0], height:7, rx:2 }));
+      gStatic.append(el("line", { class:"fig-hierro", x1:n[0]+6, y1:n[2]+7, x2:n[0]+6, y2:134, "stroke-width":4 }));
+      gStatic.append(el("line", { class:"fig-hierro", x1:n[1]-6, y1:n[2]+7, x2:n[1]-6, y2:134, "stroke-width":4 }));
     }
     if(kind === "rack"){
-      [26,150].forEach(x => gStatic.append(el("line", { x1:x, y1:32, x2:x, y2:134, stroke:"#2C3742", "stroke-width":5 })));
+      [26,150].forEach(x => gStatic.append(el("line", { class:"fig-hierro", x1:x, y1:32, x2:x, y2:134, "stroke-width":5 })));
       /* pines de seguridad, en rojo: es la parte que salva la vida */
-      gStatic.append(el("line", { x1:26, y1:70, x2:44, y2:70, stroke:"var(--p25)", "stroke-width":3 }));
-      gStatic.append(el("line", { x1:132, y1:70, x2:150, y2:70, stroke:"var(--p25)", "stroke-width":3 }));
+      gStatic.append(el("line", { class:"fig-riesgo", x1:26, y1:70, x2:44, y2:70, "stroke-width":3 }));
+      gStatic.append(el("line", { class:"fig-riesgo", x1:132, y1:70, x2:150, y2:70, "stroke-width":3 }));
     }
     if(kind === "pullbar"){
-      [44,156].forEach(x => gStatic.append(el("line", { x1:x, y1:18, x2:x, y2:134, stroke:"#2C3742", "stroke-width":5 })));
-      gStatic.append(el("line", { x1:44, y1:20, x2:156, y2:20, stroke:"#4A5866", "stroke-width":4, "stroke-linecap":"round" }));
+      [44,156].forEach(x => gStatic.append(el("line", { class:"fig-hierro", x1:x, y1:18, x2:x, y2:134, "stroke-width":5 })));
+      gStatic.append(el("line", { class:"fig-hierro2", x1:44, y1:20, x2:156, y2:20, "stroke-width":4, "stroke-linecap":"round" }));
     }
     if(kind === "fixbar"){
-      [40,160].forEach(x => gStatic.append(el("line", { x1:x, y1:40, x2:x, y2:134, stroke:"#2C3742", "stroke-width":5 })));
-      gStatic.append(el("line", { x1:40, y1:n[1], x2:160, y2:n[1], stroke:"#4A5866", "stroke-width":4, "stroke-linecap":"round" }));
+      [40,160].forEach(x => gStatic.append(el("line", { class:"fig-hierro", x1:x, y1:40, x2:x, y2:134, "stroke-width":5 })));
+      gStatic.append(el("line", { class:"fig-hierro2", x1:40, y1:n[1], x2:160, y2:n[1], "stroke-width":4, "stroke-linecap":"round" }));
     }
     if(kind === "incline"){
-      gStatic.append(el("line", { x1:100, y1:132, x2:100, y2:96, stroke:"#2C3742", "stroke-width":5 }));
-      gStatic.append(el("ellipse", { cx:100, cy:92, rx:20, ry:7, fill:"#2C3742" }));
+      gStatic.append(el("line", { class:"fig-hierro", x1:100, y1:132, x2:100, y2:96, "stroke-width":5 }));
+      gStatic.append(el("ellipse", { class:"fig-hierro-f", cx:100, cy:92, rx:20, ry:7 }));
     }
   });
 
@@ -67,11 +67,11 @@ export function buildFigure(figKey){
     gImp.append(imp);
   } else if(kind === "landmine"){
     const a = anch.split(",").map(Number);
-    imp = el("line", { x1:a[0], y1:a[1], stroke:"#8B9AA8", "stroke-width":3, "stroke-linecap":"round" });
-    gImp.append(el("circle", { cx:a[0], cy:a[1], r:4, fill:"#4A5866" }), imp);
+    imp = el("line", { class:"fig-acero", x1:a[0], y1:a[1], "stroke-width":3, "stroke-linecap":"round" });
+    gImp.append(el("circle", { class:"fig-acero-f", cx:a[0], cy:a[1], r:4 }), imp);
   } else if(kind === "barFront"){
     imp = el("g", {});
-    const shaft = el("line", { stroke:"#8B9AA8", "stroke-width":3.5, "stroke-linecap":"round" });
+    const shaft = el("line", { class:"fig-acero", "stroke-width":3.5, "stroke-linecap":"round" });
     const pl = el("line", { stroke:"var(--p20)", "stroke-width":10, "stroke-linecap":"round" });
     const pr = el("line", { stroke:"var(--p20)", "stroke-width":10, "stroke-linecap":"round" });
     imp.append(shaft, pl, pr); imp._parts = { shaft, pl, pr }; gImp.append(imp);
@@ -83,13 +83,13 @@ export function buildFigure(figKey){
   }
 
   /* --- cuerpo --- */
-  const mk = w => el("polyline", { fill:"none", stroke:"#E8EDF2", "stroke-width":w,
+  const mk = w => el("polyline", { class:"fig-cerca", fill:"none", "stroke-width":w,
                                    "stroke-linecap":"round", "stroke-linejoin":"round" });
-  const far = w => el("polyline", { fill:"none", stroke:"#66757F", "stroke-width":w,
+  const far = w => el("polyline", { class:"fig-lejos", fill:"none", "stroke-width":w,
                                     "stroke-linecap":"round", "stroke-linejoin":"round" });
   const torso = mk(5), legA = mk(4.5), armA = mk(4);
   const legB = far(4.5), armB = far(4);
-  const head = el("circle", { r:8, fill:"none", stroke:"#E8EDF2", "stroke-width":4 });
+  const head = el("circle", { class:"fig-cerca", r:8, fill:"none", "stroke-width":4 });
   const neck = mk(3.5);
   const shbar = mk(4.5);
   gBody.append(legB, armB, torso, shbar, legA, armA, neck, head);

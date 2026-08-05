@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Sistema">
-<meta name="theme-color" content="#080B11">
+<meta name="theme-color" content="#080B11" id="metaTema">
 <meta name="description" content="Registro de entreno con barra y discos, con niveles, rangos y logros. Funciona sin conexión y guarda todo en el propio móvil.">
 <title>SISTEMA — Registro de cazador</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,6 +17,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/sistema.css">
+<script>
+/* Resuelve el tema antes de pintar nada. Va aquí, en línea y bloqueante,
+   porque si esperara al módulo se vería un fogonazo del tema contrario
+   al abrir la app. "auto" sigue lo que tenga puesto el móvil. */
+(function () {
+  var guardado = null;
+  try { guardado = localStorage.getItem("sistema:tema"); } catch (e) {}
+  var tema = guardado && guardado !== "auto" ? guardado
+    : (window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "claro" : "oscuro");
+  document.documentElement.dataset.tema = tema;
+  var meta = document.getElementById("metaTema");
+  if (meta) meta.content = tema === "claro" ? "#EEF2F7" : "#080B11";
+})();
+</script>
 </head>
 <body>
 
