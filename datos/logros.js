@@ -43,10 +43,10 @@ export const LOGROS = [
     desc: "Tres días distintos en la misma semana.",
     cond: c => c.diasEstaSemana >= 3 },
 
-  { id: "cincotone", rango: "D", icono: "▰",
-    nombre: "Cinco toneladas",
-    desc: "Acumula 5.000 kg movidos.",
-    cond: c => c.volumen >= 5000 },
+  { id: "dieztone", rango: "D", icono: "▰",
+    nombre: "Diez toneladas",
+    desc: "Acumula 10.000 kg movidos.",
+    cond: c => c.volumen >= 10000 },
 
   { id: "amanecer", rango: "D", icono: "☀",
     nombre: "Puerta al amanecer",
@@ -79,10 +79,10 @@ export const LOGROS = [
     desc: "Vuelve a entrenar tras siete días o más parado.",
     cond: c => (c.ultima?.diasParado || 0) >= 7 },
 
-  { id: "veintitone", rango: "C", icono: "▮",
-    nombre: "Veinte toneladas",
-    desc: "Acumula 20.000 kg movidos.",
-    cond: c => c.volumen >= 20000 },
+  { id: "cientone", rango: "C", icono: "▮",
+    nombre: "Cien toneladas",
+    desc: "Acumula 100.000 kg movidos.",
+    cond: c => c.volumen >= 100000 },
 
   { id: "cienseries", rango: "C", icono: "≡",
     nombre: "Cien series",
@@ -102,8 +102,13 @@ export const LOGROS = [
 
   { id: "puertaroja", rango: "B", icono: "⬢",
     nombre: "Puerta roja",
-    desc: "Cinco toneladas movidas en una sola sesión.",
-    cond: c => (c.ultima?.volumen || 0) >= 5000 },
+    desc: "Diez toneladas movidas en una sola sesión.",
+    cond: c => (c.ultima?.volumen || 0) >= 10000 },
+
+  { id: "quinientas", rango: "B", icono: "▉",
+    nombre: "Quinientas toneladas",
+    desc: "Acumula 500.000 kg movidos.",
+    cond: c => c.volumen >= 500000 },
 
   { id: "catalogo", rango: "B", icono: "⊞",
     nombre: "Arsenal completo",
@@ -116,10 +121,10 @@ export const LOGROS = [
     desc: "Cien sesiones terminadas.",
     cond: c => c.sesiones >= 100 },
 
-  { id: "cientone", rango: "A", icono: "█",
-    nombre: "Cien toneladas",
-    desc: "Acumula 100.000 kg movidos.",
-    cond: c => c.volumen >= 100000 },
+  { id: "millon", rango: "A", icono: "█",
+    nombre: "Un millón de kilos",
+    desc: "Acumula 1.000.000 kg movidos.",
+    cond: c => c.volumen >= 1000000 },
 
   { id: "ejercito", rango: "A", icono: "▚",
     nombre: "Ejército de sombras",

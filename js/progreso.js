@@ -14,8 +14,11 @@ export const xpDeSerie = (carga, reps) => Math.max(5, Math.round(carga * reps / 
 /* Bono por cerrar el día entero. Premia terminar, no picotear. */
 export const XP_MISION = 100;
 
-/** XP acumulada necesaria para estar en el nivel n. */
-export const umbral = n => (n <= 1 ? 0 : Math.round(100 * Math.pow(n - 1, 1.6)));
+/* XP acumulada necesaria para estar en el nivel n.
+   La curva está ajustada a sesiones reales de esta rutina, que rondan
+   los 1.000-1.500 XP: los primeros niveles caen en la primera semana
+   y el rango S (nivel 45) pide alrededor de un año de constancia. */
+export const umbral = n => (n <= 1 ? 0 : Math.round(60 * Math.pow(n - 1, 2.3)));
 
 export function nivelDe(xp) {
   let nivel = 1;
@@ -53,7 +56,9 @@ export function estadisticas(filas) {
     volumen += f.volumen || 0;
     reps += (f.reps || 0) * (f.series || 0);
     xp += f.xp || 0;
-    kgMax = Math.max(kgMax, f.carga || f.kg || 0);
+    /* Fuerza es peso levantado, no peso propio: si contaran los
+       corporales, unas flexiones marcarían más que la banca. */
+    if (f.implemento !== "corporal") kgMax = Math.max(kgMax, f.carga || f.kg || 0);
   }
   /* El bono de misión no está en las filas: se reconstruye por sesión. */
   xp += sesiones.size * XP_MISION;

@@ -498,7 +498,8 @@ async function terminarSesion() {
     nuevas.push({
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-      kg, carga, series: hechas, reps: st.reps, volumen: vol, xp: xpEj
+      implemento: ej.implemento, kg, carga,
+      series: hechas, reps: st.reps, volumen: vol, xp: xpEj
     });
     volumen += vol; xp += xpEj;
     delete E.sesion[ej.sesionId];
