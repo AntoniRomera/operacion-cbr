@@ -121,11 +121,18 @@ def png(ruta, tam, escala=1.0):
     print(f"{ruta}  {tam}x{tam}  {len(blob)} bytes")
 
 
+# iOS congela el icono de la pantalla de inicio al añadir la app, y además lo
+# cachea por su URL: aunque borres el acceso directo y lo vuelvas a añadir,
+# puede servirte el de antes. Cambiar de nombre es lo único que lo obliga a
+# bajarlo de nuevo, así que al rediseñar el icono se sube este sufijo y se
+# actualizan index.html, manifest.webmanifest y sw.js.
+SUFIJO = "-v2"
+
 if __name__ == "__main__":
     os.makedirs(SALIDA, exist_ok=True)
-    png(f"{SALIDA}/icon-512.png", 512)
-    png(f"{SALIDA}/icon-192.png", 192)
-    png(f"{SALIDA}/apple-touch-icon.png", 180)
-    png(f"{SALIDA}/favicon-32.png", 32)
+    png(f"{SALIDA}/icon-512{SUFIJO}.png", 512)
+    png(f"{SALIDA}/icon-192{SUFIJO}.png", 192)
+    png(f"{SALIDA}/apple-touch-icon{SUFIJO}.png", 180)
+    png(f"{SALIDA}/favicon-32{SUFIJO}.png", 32)
     # Android recorta un círculo: el contenido se encoge a la zona segura.
-    png(f"{SALIDA}/icon-maskable-512.png", 512, escala=0.66)
+    png(f"{SALIDA}/icon-maskable-512{SUFIJO}.png", 512, escala=0.66)
