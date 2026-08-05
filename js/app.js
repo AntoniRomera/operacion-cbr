@@ -399,7 +399,7 @@ function pintarDia() {
 
       /* Entrar en frío a una barra cargada es como se rompe la gente.
          Los escalones salen de los discos que tienes, no de porcentajes. */
-      if (ej.implemento === "barra" && kg >= 50) {
+      if (ej.implemento === "barra" && kg > equipo.BARRA.kg + 10) {
         html += `<div class="calienta">
             <span class="calienta__et">Aproximación</span>
             ${equipo.aproximacion(kg).map(s =>
