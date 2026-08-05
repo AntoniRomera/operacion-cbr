@@ -18,6 +18,16 @@
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+
+/* iOS amplía la página al doble toque, y marcando series a toda prisa
+   eso pasa cada dos por tres. `manipulation` lo desactiva y deja intacto
+   el pellizco para ampliar, que es lo que de verdad hace falta conservar.
+   Los controles lo repiten por si algún navegador no lo hereda del padre. */
+html,body{touch-action:manipulation}
+button,input,.ficha,.tarjeta,.serie,.paso,.mini,.salto{touch-action:manipulation}
+
+/* Y que mantener el dedo en un botón no saque la lupa ni seleccione texto. */
+button{-webkit-user-select:none;user-select:none}
 body{
   background:var(--fondo);color:var(--tinta);
   font-family:var(--texto);font-size:15px;line-height:1.5;
