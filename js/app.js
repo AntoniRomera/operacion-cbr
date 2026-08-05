@@ -203,9 +203,11 @@ function pintarMisiones() {
     if (destacada) clases.push("tarjeta--destacada");
     if (e.hecha) clases.push("tarjeta--hecha");
     else if (e.enCurso) clases.push("tarjeta--curso");
+    /* En las pequeñas cabe una línea justa: solo las series. */
     const pie = e.hecha ? "Completada"
               : e.enCurso ? `En curso · ${e.marcadas}/${e.total}`
-              : `${e.dia.ejercicios.length} ejercicios · ${e.total} series`;
+              : destacada ? `${e.dia.ejercicios.length} ejercicios · ${e.total} series`
+              : `${e.total} series`;
     return `<button class="${clases.join(" ")}" data-mision="${e.dia.n}">
         <span class="tarjeta__n">${e.dia.n}</span>
         ${destacada ? `<span class="tarjeta__eti">Siguiente misión</span>` : ""}
