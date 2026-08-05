@@ -88,6 +88,11 @@
   --tinta:#E6EDF7; --apagado:#8395AE; --tenue:#6C7E96;
   --sis:#38BDF8; --sis2:#A78BFA; --exito:#34D399;
   --sobreSis:#04121C; --resplandor:1;
+  --figCuerpo:#E8EDF2;
+  /* El color heredado del body ya viene resuelto: redefinir la variable
+     no basta, hay que volver a pedirla aquí o el nombre del cazador se
+     quedaría en tinta oscura sobre la cabecera oscura. */
+  color:var(--tinta);
 }
 
 /* Fuera resplandores en claro: un halo de neón sobre blanco no brilla,
