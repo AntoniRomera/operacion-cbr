@@ -193,6 +193,8 @@ body.puerta-abierta .top{display:none}
   padding:12px;border:1px solid var(--linea);border-radius:7px;background:var(--panel2);color:var(--tinta);
 }
 .ficha:active{border-color:var(--sis)}
+.ficha--actual{border-color:rgba(56,189,248,.55);background:linear-gradient(100deg,rgba(56,189,248,.10),var(--panel2))}
+.ficha--actual .ficha__txt small{color:var(--sis)}
 .ficha__ini{
   flex:0 0 auto;width:40px;height:40px;display:grid;place-items:center;border-radius:8px;
   background:rgba(56,189,248,.14);color:var(--sis);border:1px solid rgba(56,189,248,.4);

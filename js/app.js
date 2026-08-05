@@ -62,6 +62,7 @@ function siguienteAviso() {
    ============================================================ */
 let puertaModo = "lista";     // lista · pin · alta
 let pendiente = null;
+let cambiando = false;        // se llegó aquí desde una sesión abierta
 
 async function pintarPuerta() {
   stopAnim();
@@ -92,23 +93,32 @@ async function pintarPuerta() {
   } else {
     cuerpo = `
       <p class="vt__txt">Selecciona tu ficha.</p>
-      <div class="fichas">${lista.map(c => `
-        <button class="ficha" data-entrar="${c.id}">
+      <div class="fichas">${lista.map(c => {
+        const actual = cambiando && c.id === cazador?.id;
+        return `<button class="ficha ${actual ? "ficha--actual" : ""}" data-entrar="${c.id}">
           <span class="ficha__ini">${esc(c.nombre.slice(0, 1).toUpperCase())}</span>
           <span class="ficha__txt">
             <b>${esc(c.nombre)}</b>
-            <small>${c.pin ? "Con PIN" : "Sin PIN"} · desde ${c.creado.slice(0, 10)}</small>
+            <small>${actual ? "Ficha actual" : c.pin ? "Con PIN" : "Sin PIN"} · desde ${c.creado.slice(0, 10)}</small>
           </span>
-        </button>`).join("")}</div>
+        </button>`;
+      }).join("")}</div>
       <button class="btn btn--fantasma" id="nuevo">Registrar otro cazador</button>`;
   }
+
+  /* Si se viene de una sesión abierta, salir de aquí no puede costar
+     un PIN: la sesión sigue viva hasta que se elija otra ficha. */
+  const vuelta = cambiando && cazador
+    ? `<button class="btn btn--fantasma" id="seguir">Seguir como ${esc(cazador.nombre)}</button>`
+    : "";
 
   $("app").innerHTML = `
     <div class="puerta">
       <div class="vt vt--grande">
-        <div class="vt__cab">Notificación</div>
-        <h1 class="vt__tit">El Sistema<br>te ha seleccionado</h1>
+        <div class="vt__cab">${cambiando ? "Cambio de ficha" : "Notificación"}</div>
+        <h1 class="vt__tit">${cambiando ? "Cambiar<br>de cazador" : "El Sistema<br>te ha seleccionado"}</h1>
         ${cuerpo}
+        ${vuelta}
         <p class="vt__pie">Acceso local. El PIN separa fichas en el mismo móvil,
         no protege los datos de quien tenga el teléfono desbloqueado.</p>
       </div>
@@ -123,14 +133,23 @@ async function entrar(id) {
   localStorage.setItem(CLAVE_SESION, id);
   document.body.classList.remove("puerta-abierta");
   vista = "misiones";
+  cambiando = false;
   await revisarLogros();
   pintar();
 }
 
-function salir() {
-  localStorage.removeItem(CLAVE_SESION);
-  cazador = null; E = null; filas = []; desbloqueados = [];
-  vista = "puerta"; puertaModo = "lista";
+/* Abre el selector sin cerrar nada: se puede volver sin teclear el PIN. */
+function abrirSelector() {
+  cambiando = true;
+  puertaModo = "lista";
+  vista = "puerta";
+  pintar();
+}
+
+function seguirIgual() {
+  cambiando = false;
+  document.body.classList.remove("puerta-abierta");
+  vista = "misiones";
   pintar();
 }
 
@@ -432,7 +451,7 @@ function pintarPerfil() {
         <button class="btn" id="expJson">Descargar copia de seguridad</button>
         <button class="btn" id="impJson">Restaurar copia</button>
         <button class="btn" id="semana">Empezar semana ${E.semana + 1}</button>
-        <button class="btn btn--fantasma" id="salir">Cambiar de cazador</button>
+        <button class="btn btn--fantasma" id="cambiarFicha">Cambiar de cazador</button>
       </div>
       <input type="file" id="ficheroCopia" accept="application/json,.json" hidden>
     </div>`;
@@ -506,7 +525,10 @@ function pintarManual() {
    PINTADO GENERAL
    ============================================================ */
 function pintar() {
-  if (!cazador) { $("cabecera").innerHTML = ""; $("nav").innerHTML = ""; pintarPuerta(); return; }
+  if (vista === "puerta" || !cazador) {
+    $("cabecera").innerHTML = ""; $("nav").innerHTML = "";
+    pintarPuerta(); return;
+  }
   pintarCabecera();
   pintarNav();
   if (vista === "logros") pintarLogros();
@@ -633,8 +655,12 @@ document.addEventListener("click", async e => {
   if (!b) return;
 
   /* --- puerta --- */
+  if (b.id === "seguir") { seguirIgual(); return; }
   if (b.dataset.entrar) {
-    const c = await DB.cazadores.get(+b.dataset.entrar);
+    const id = +b.dataset.entrar;
+    /* Volver a la ficha que ya estaba abierta no es entrar: no pide PIN. */
+    if (cambiando && id === cazador?.id) { seguirIgual(); return; }
+    const c = await DB.cazadores.get(id);
     if (c.pin) { pendiente = c; puertaModo = "pin"; pintarPuerta(); }
     else entrar(c.id);
     return;
@@ -661,7 +687,7 @@ document.addEventListener("click", async e => {
     return;
   }
 
-  if (!cazador) return;
+  if (!cazador || vista === "puerta") return;
 
   /* --- navegación --- */
   if (b.dataset.mision || b.dataset.dia) {
@@ -727,7 +753,7 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.id === "semana") { E.semana++; await guardar(); await revisarLogros(); pintar(); aviso("Semana " + E.semana); return; }
-  if (b.id === "salir") { salir(); return; }
+  if (b.id === "cambiarFicha") { abrirSelector(); return; }
 
   if (b.id === "expCsv") {
     if (!filas.length) { aviso("Todavía no hay sesiones guardadas"); return; }
