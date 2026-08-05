@@ -24,7 +24,7 @@ No hace falta App Store, ni cuenta de desarrollador, ni firmar nada.
 
 ```
 index.html              el armazón: cabecera, main y avisos
-css/sistema.css         los estilos (ventanas del Sistema, brillos)
+css/sistema.css         los estilos y los dos temas
 
 datos/equipo.js         barra y discos que tienes → cargas posibles
 datos/ejercicios.js     catálogo: músculos, patrón, claves de técnica
@@ -51,6 +51,22 @@ tools-qr.py             genera qr.png (QR escrito a mano)
   probando todos los repartos posibles entre los dos lados.
 - **Otro logro**: una línea en `datos/logros.js` con su `cond(c)`. El contexto
   que recibe está documentado en `js/progreso.js`.
+
+## Temas
+
+Dos, y el claro no es el oscuro invertido: sobre blanco un halo de neón
+no brilla, ensucia. Se traduce el lenguaje visual — se quedan los
+corchetes de las esquinas y las etiquetas entre paréntesis, que es lo que
+lleva la identidad, y los resplandores se sustituyen por bordes más firmes.
+Los acentos bajan a pasos oscuros porque el cian de neón sobre blanco da
+1,7:1 de contraste.
+
+La cabecera y el menú **siguen oscuros en el tema claro**: encima de la
+cabecera el iPhone pinta la hora y la batería en blanco, y sobre fondo
+claro no se leerían.
+
+Por defecto sigue lo que tenga puesto el móvil; en **Perfil → Aspecto** se
+puede forzar uno de los dos.
 
 ## Cazadores y datos
 
