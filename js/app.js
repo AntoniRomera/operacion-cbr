@@ -578,7 +578,16 @@ async function revisarLogros(ultima = null) {
 }
 
 /* ---------- terminar sesión ---------- */
+let cerrando = false;
+
 async function terminarSesion() {
+  /* Guardar tarda: sin esto, dos toques separados podrían solaparse. */
+  if (cerrando) return;
+  cerrando = true;
+  try { await cerrarSesion(); } finally { cerrando = false; }
+}
+
+async function cerrarSesion() {
   const d = diaDe(diaActivo);
   const nuevas = [];
   let subidas = 0, volumen = 0, xp = 0, completa = true;
@@ -650,9 +659,33 @@ function bajar(nombre, texto, tipo) {
 /* ============================================================
    EVENTOS
    ============================================================ */
+/* ---------- margen contra el toque doble ----------
+   Con las manos con prisa entre series se cuela un segundo toque sin
+   querer: marcabas y desmarcabas la serie sin enterarte, o te saltabas
+   una semana entera. El segundo toque sobre el mismo botón dentro del
+   margen se ignora.
+
+   Solo afecta a las series y a los botones con identificador, que son
+   los de una sola vez. Los de más y menos peso o reps no llevan ninguno
+   a propósito: ahí sí quieres poder machacar el botón. */
+const MARGEN_TOQUE = 500;
+let ultimoToque = { marca: null, t: -Infinity };
+
+function repetido(b) {
+  const marca = b.dataset.serie ? `serie:${b.dataset.serie}:${b.dataset.k}`
+              : b.id ? `id:${b.id}`
+              : null;
+  if (!marca) return false;
+  const ahora = performance.now();
+  if (marca === ultimoToque.marca && ahora - ultimoToque.t < MARGEN_TOQUE) return true;
+  ultimoToque = { marca, t: ahora };
+  return false;
+}
+
 document.addEventListener("click", async e => {
   const b = e.target.closest("button");
   if (!b) return;
+  if (repetido(b)) return;
 
   /* --- puerta --- */
   if (b.id === "seguir") { seguirIgual(); return; }
