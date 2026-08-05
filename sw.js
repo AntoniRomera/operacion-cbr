@@ -1,15 +1,26 @@
 /* ============================================================
-   Service worker de Operación CBR.
-   El gimnasio de casa no tiene por qué tener cobertura: la app
-   entera se guarda en la primera visita y a partir de ahí abre
-   igual en avión que con fibra.
-   Sube VERSION cuando cambies index.html y se limpia lo viejo.
+   Service worker del Sistema.
+   El garaje no tiene por qué tener cobertura: la app entera se
+   guarda en la primera visita y a partir de ahí abre igual en
+   avión que con fibra.
+   Sube VERSION al tocar cualquier fichero de la lista y se limpia
+   la caché vieja al activarse.
    ============================================================ */
-const VERSION = "cbr-v2";
+const VERSION = "sistema-v1";
 const SHELL = [
   "./",
   "index.html",
   "manifest.webmanifest",
+  "css/sistema.css",
+  "js/app.js",
+  "js/db.js",
+  "js/progreso.js",
+  "js/figuras.js",
+  "datos/equipo.js",
+  "datos/ejercicios.js",
+  "datos/rutina.js",
+  "datos/figuras.js",
+  "datos/logros.js",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
