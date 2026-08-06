@@ -916,10 +916,13 @@ document.addEventListener("visibilitychange", () => {
 
 /* ---------- guardar ---------- */
 const guardar = () => DB.estado.guardar(E);
+
+/* Ahora scrollea el contenedor del contenido, no la ventana. */
+const arriba = () => { $("app").scrollTop = 0; };
 function repintarQuieto() {
-  const y = window.scrollY;
+  const y = $("app").scrollTop;
   pintar();
-  window.scrollTo(0, y);
+  $("app").scrollTop = y;
 }
 
 /* ---------- logros ---------- */
@@ -1012,7 +1015,7 @@ async function cerrarSesion() {
 
   /* De vuelta al tablero: se ve la misión marcada y qué queda de semana. */
   vista = "misiones";
-  pintar(); window.scrollTo(0, 0);
+  pintar(); arriba();
   if (!nuevos.length && despues.nivel === antes.nivel) {
     const tiempo = minutos ? ` · ${minutos} min` : "";
     aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
@@ -1100,17 +1103,17 @@ document.addEventListener("click", async e => {
   if (b.dataset.mision || b.dataset.dia) {
     diaActivo = +(b.dataset.mision || b.dataset.dia);
     vista = "dia"; tecnicaAbierta = null;
-    pintar(); window.scrollTo(0, 0);
+    pintar(); arriba();
     return;
   }
-  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; pintar(); window.scrollTo(0, 0); return; }
+  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; pintar(); arriba(); return; }
   if (b.dataset.ficha) {
     ejercicioActivo = b.dataset.ficha;
     puntoSel = { tipo: null, i: null };
-    vista = "ejercicio"; pintar(); window.scrollTo(0, 0);
+    vista = "ejercicio"; pintar(); arriba();
     return;
   }
-  if (b.id === "irACopia") { vista = "perfil"; pintar(); window.scrollTo(0, 0); return; }
+  if (b.id === "irACopia") { vista = "perfil"; pintar(); arriba(); return; }
   if (b.dataset.tema) { ponerTema(b.dataset.tema); return; }
 
   /* --- técnica --- */
@@ -1274,17 +1277,6 @@ document.addEventListener("keydown", e => {
   if ($("fPinEntrar") === document.activeElement) $("entrarPin")?.click();
   else if (document.activeElement?.closest(".puerta")) $("crear")?.click();
 });
-
-/* ---------- alto del pie ----------
-   Cuánto ocupa el menú depende del móvil: el área segura del indicador
-   de inicio solo la conoce el navegador. Se mide y se publica como
-   variable, y así el contenido nunca queda debajo ni sobra hueco. Se
-   vuelve a medir sola cuando aparece el descanso o gira la pantalla. */
-function medirPie() {
-  const alto = $("pie").getBoundingClientRect().height;
-  document.documentElement.style.setProperty("--pie", Math.round(alto) + "px");
-}
-new ResizeObserver(medirPie).observe($("pie"));
 
 /* ============================================================
    ARRANQUE
