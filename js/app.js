@@ -673,6 +673,7 @@ function pintarEjercicio() {
   const kgActual = E.pesos[clave] ?? ej.kgInicial ?? 0;
   const mejor = mias.reduce((a, f) => Math.max(a, f.kg || 0), 0);
   const volumen = mias.reduce((a, f) => a + (f.volumen || 0), 0);
+  const corporal = ej.implemento === "corporal";
   const marca = P.mejorMarca(filas, clave);
   const ultimaVez = mias.length
     ? Math.round((new Date(hoy()) - new Date(mias[mias.length - 1].f)) / 86400000)
@@ -692,8 +693,12 @@ function pintarEjercicio() {
 
     <div class="atributos">
       <div class="atr"><span class="atr__cl">AHORA</span><span class="atr__val">${kgActual}${ej.implemento === "corporal" ? "" : " kg"}</span><span class="atr__nom">Carga actual</span></div>
-      <div class="atr"><span class="atr__cl">1RM</span><span class="atr__val">${marca || "—"}${marca ? " kg" : ""}</span><span class="atr__nom">Máximo estimado</span></div>
-      <div class="atr"><span class="atr__cl">TOPE</span><span class="atr__val">${mejor || "—"}${mejor ? " kg" : ""}</span><span class="atr__nom">Más peso movido</span></div>
+      <div class="atr"><span class="atr__cl">${corporal ? "REPS" : "1RM"}</span>
+        <span class="atr__val">${marca || "—"}${marca && !corporal ? " kg" : ""}</span>
+        <span class="atr__nom">${corporal ? "Mejor serie" : "Máximo estimado"}</span></div>
+      <div class="atr"><span class="atr__cl">TOPE</span>
+        <span class="atr__val">${corporal ? equipo.cargaReal(ej, 0, pesoActual()) + " kg" : (mejor ? mejor + " kg" : "—")}</span>
+        <span class="atr__nom">${corporal ? "Carga efectiva" : "Más peso movido"}</span></div>
       <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${mias.length}</span><span class="atr__nom">Sesiones</span></div>
       <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Acumulado</span></div>
       <div class="atr"><span class="atr__cl">ÚLTIMA</span><span class="atr__val">${ultimaVez}</span><span class="atr__nom">Días desde</span></div>
@@ -721,12 +726,12 @@ function pintarEjercicio() {
     ${mias.length ? `<div class="vt">
       <div class="vt__cab">Registro</div>
       <table class="tabla">
-        <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>1RM</th></tr>
+        <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>${corporal ? "Reps" : "1RM"}</th></tr>
         ${[...mias].reverse().map(f => {
-          const m = P.e1RMde(f);
+          const m = P.marcaDe(f);
           return `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
             <td>${f.series}×${f.reps}</td>
-            <td>${m ? `${m} kg${m === marca ? " ★" : ""}` : "—"}</td></tr>
+            <td>${m ? `${m}${corporal ? "" : " kg"}${m === marca ? " ★" : ""}` : "—"}</td></tr>
             ${f.nota ? `<tr class="fila-nota"><td colspan="4">“${esc(f.nota)}”</td></tr>` : ""}`;
         }).join("")}
       </table>
@@ -1197,8 +1202,11 @@ async function cerrarSesion() {
     /* Récord contra la mejor marca anterior de ese ejercicio. La primera
        vez no cuenta: cualquier número sería un récord y no significa nada. */
     const marcaPrevia = P.mejorMarca(filas, ej.clave);
-    const marca = P.e1RM(carga, st.reps);
-    if (marcaPrevia > 0 && marca > marcaPrevia) records.push({ nombre: ej.nombre, marca });
+    const fila = { implemento: ej.implemento, carga, reps: st.reps };
+    const marca = P.marcaDe(fila);
+    if (marcaPrevia > 0 && marca > marcaPrevia) {
+      records.push({ nombre: ej.nombre, marca, unidad: P.unidadMarca(fila) });
+    }
 
     nuevas.push({
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
@@ -1237,7 +1245,7 @@ async function cerrarSesion() {
   }
 
   for (const r of records) {
-    aviso(`<b>Nuevo récord</b><span>${esc(r.nombre)} · ${r.marca} kg estimados</span>`, "rango");
+    aviso(`<b>Nuevo récord</b><span>${esc(r.nombre)} · ${r.marca} ${r.unidad}</span>`, "rango");
   }
 
   const nuevos = await revisarLogros({

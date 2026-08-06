@@ -6,7 +6,7 @@
    Sube VERSION al tocar cualquier fichero de la lista y se limpia
    la caché vieja al activarse.
    ============================================================ */
-const VERSION = "sistema-v18";
+const VERSION = "sistema-v19";
 const SHELL = [
   "./",
   "index.html",

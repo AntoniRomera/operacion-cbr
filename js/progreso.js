@@ -53,12 +53,21 @@ export function proximoRango(nivel) {
 export const e1RM = (carga, reps) =>
   carga > 0 && reps > 0 ? Math.round(carga * (1 + Math.min(reps, 15) / 30)) : 0;
 
-export const e1RMde = fila => e1RM(fila.carga || fila.kg || 0, fila.reps || 0);
+/* En los corporales no hay 1RM que valga: la carga es tu propio peso.
+   Aplicar la fórmula daría 134 kg en unas negativas de dominada, y como
+   la carga baja al adelgazar, perder grasa parecería perder fuerza.
+   Ahí la marca son las reps, que es lo que de verdad sube. */
+export const esCorporal = f => f.implemento === "corporal";
 
-/** Mejor 1RM estimado de un ejercicio, opcionalmente ignorando unas filas. */
-export function mejorMarca(filas, clave, excluir = new Set()) {
-  return filas.reduce((a, f) =>
-    f.ej === clave && !excluir.has(f) ? Math.max(a, e1RMde(f)) : a, 0);
+export const e1RMde = f => esCorporal(f) ? 0 : e1RM(f.carga || f.kg || 0, f.reps || 0);
+
+/** La marca que compite consigo misma en cada ejercicio. */
+export const marcaDe = f => esCorporal(f) ? (f.reps || 0) : e1RMde(f);
+export const unidadMarca = f => esCorporal(f) ? "reps" : "kg estimados";
+
+/** Mejor marca histórica de un ejercicio. */
+export function mejorMarca(filas, clave) {
+  return filas.reduce((a, f) => f.ej === clave ? Math.max(a, marcaDe(f)) : a, 0);
 }
 
 /* ---------- estadísticas desde el historial ---------- */
