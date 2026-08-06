@@ -45,6 +45,22 @@ export function proximoRango(nivel) {
   return orden[i + 1] ? { ...orden[i + 1], faltan: orden[i + 1].desde - nivel } : null;
 }
 
+/* ---------- récords ----------
+   Epley. Sirve para comparar series que no se pueden comparar a ojo:
+   60 kg × 12 vale más que 70 × 5, y sin esto no se nota. Por encima de
+   quince reps la fórmula se dispara, así que ahí se corta: es una
+   referencia para ver progreso, no una marca real de fuerza máxima. */
+export const e1RM = (carga, reps) =>
+  carga > 0 && reps > 0 ? Math.round(carga * (1 + Math.min(reps, 15) / 30)) : 0;
+
+export const e1RMde = fila => e1RM(fila.carga || fila.kg || 0, fila.reps || 0);
+
+/** Mejor 1RM estimado de un ejercicio, opcionalmente ignorando unas filas. */
+export function mejorMarca(filas, clave, excluir = new Set()) {
+  return filas.reduce((a, f) =>
+    f.ej === clave && !excluir.has(f) ? Math.max(a, e1RMde(f)) : a, 0);
+}
+
 /* ---------- estadísticas desde el historial ---------- */
 export function estadisticas(filas) {
   const sesiones = new Map(), ejercicios = new Set();

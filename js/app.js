@@ -5,8 +5,8 @@
    texto y un único manejador de clics delegado en el documento.
    ============================================================ */
 
-import { RUTINA, dia as diaDe } from "../datos/rutina.js";
-import { EJERCICIOS } from "../datos/ejercicios.js";
+import { RUTINA, dia as diaRutina } from "../datos/rutina.js";
+import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
 import * as DB from "./db.js";
@@ -21,6 +21,11 @@ let desbloqueados = [];      // ids de logros conseguidos
 let vista = "puerta";        // puerta · misiones · dia · logros · perfil · manual
 let diaActivo = 1;
 let tecnicaAbierta = null;
+let cambioAbierto = null;        // ejercicio con el panel de cambio abierto
+let cambioTemporal = true;       // el cambio vale solo para hoy
+let pesoBorrador = null;         // peso corporal a medio teclear
+let cron = null;                 // cronómetro de isométricos en marcha
+let candado = null;              // bloqueo de apagado de pantalla
 let ejercicioActivo = null;      // ficha de ejercicio abierta
 let puntoSel = { tipo: null, i: null };   // punto tocado en una gráfica
 let editando = null;             // id de la fila del historial en edición
@@ -62,6 +67,37 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 const mmss = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 const miles = n => n.toLocaleString("es-ES");
 const hoy = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * El día de la rutina con las sustituciones del cazador aplicadas.
+ * Se cambia el movimiento, no la prescripción: las series, el rango de
+ * reps y el descanso son del hueco de la rutina, no del ejercicio que
+ * se meta en él.
+ */
+function dia(n) {
+  const d = diaRutina(n);
+  return {
+    ...d,
+    ejercicios: d.ejercicios.map(e => {
+      const c = (E.cambios || {})[e.sesionId];
+      if (!c || !EJERCICIOS[c.ej]) return e;
+      return {
+        ...ejercicio(c.ej),
+        series: e.series, min: e.min, max: e.max, descanso: e.descanso, nota: e.nota,
+        sesionId: e.sesionId, original: e.nombre, temporal: c.temporal
+      };
+    })
+  };
+}
+
+/** El valor que se está ajustando en el perfil, sin guardar todavía. */
+const borradorPeso = () => pesoBorrador ?? pesoActual();
+
+/** Peso corporal de hoy: el último anotado, o el del registro. */
+const pesoActual = () => {
+  const h = E.corporal || [];
+  return h.length ? h[h.length - 1].kg : (cazador?.pesoCorporal || 80);
+};
 
 const pesoDe = ej => E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
 const escalon = ej => equipo.escalonDe(ej.implemento);
@@ -262,7 +298,7 @@ function pintarNav() {
    ============================================================ */
 function estadoDia(n) {
   const hechosSemana = new Set(filas.filter(f => f.semana === E.semana).map(f => f.dia));
-  const d = diaDe(n);
+  const d = dia(n);
   const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
   const marcadas = d.ejercicios.reduce(
     (a, e) => a + (E.sesion[e.sesionId]?.hechas.filter(Boolean).length || 0), 0);
@@ -358,6 +394,39 @@ function copiaHTML(st) {
    ============================================================ */
 const OJO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><path d="M12 8.5v5"/><path d="M7 10.5l5 1 5-1"/><path d="M9.5 21l2.5-7.5 2.5 7.5"/></svg>`;
 
+const CAMBIO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>`;
+
+/**
+ * Alternativas para un hueco de la rutina: mismo patrón de movimiento.
+ * Si el patrón tiene poca cosa, se abre al grupo muscular, que es el
+ * siguiente criterio menos malo.
+ */
+function alternativas(ej) {
+  const mismo = p => Object.entries(EJERCICIOS)
+    .filter(([k, e]) => k !== ej.clave && p(e))
+    .map(([k, e]) => ({ clave: k, ...e }));
+  const porPatron = mismo(e => e.patron === ej.patron);
+  return porPatron.length >= 2 ? porPatron
+    : [...porPatron, ...mismo(e => e.grupo === ej.grupo && e.patron !== ej.patron)];
+}
+
+function cambioHTML(ej) {
+  const lista = alternativas(ej);
+  return `<div class="cambio">
+      <div class="cambio__cab">${esc(ej.patron)} · otras opciones</div>
+      <div class="cambio__modo">
+        ${[[true, "Solo hoy"], [false, "Siempre"]].map(([v, n]) =>
+          `<button class="cambio__m" data-modo="${v}" aria-pressed="${cambioTemporal === v}">${n}</button>`).join("")}
+      </div>
+      ${lista.map(a => `<button class="cambio__op" data-poner="${ej.sesionId}|${a.clave}">
+          <b>${esc(a.nombre)}</b>
+          <small>${esc(a.implemento)} · ${a.musculos.slice(0, 2).map(esc).join(" · ")}</small>
+        </button>`).join("")}
+      ${ej.original ? `<button class="cambio__op cambio__op--volver" data-poner="${ej.sesionId}|">
+          Volver a ${esc(ej.original)}</button>` : ""}
+    </div>`;
+}
+
 function discoHTML(kg) {
   const p = equipo.COLOR_DISCO[kg];
   return `<div class="disco" style="background:${p.fondo};color:${p.texto};height:${p.alto}px;width:${p.ancho}px">${kg}</div>`;
@@ -377,7 +446,7 @@ function barraHTML(total) {
 }
 
 function pintarDia() {
-  const d = diaDe(diaActivo);
+  const d = dia(diaActivo);
   const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
   const hechas = d.ejercicios.reduce((a, e) => a + serie(e).hechas.filter(Boolean).length, 0);
 
@@ -410,8 +479,15 @@ function pintarDia() {
           <div class="ej__musc">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
           ${E.listos[ej.clave] ? `<span class="marca">Sube el peso</span>` : ""}
         </div>
-        <button class="ojo" data-tecnica="${ej.sesionId}" aria-expanded="${abierta}" aria-label="Ver técnica">${OJO}</button>
-      </div>`;
+        <div class="ej__btns">
+          <button class="ojo" data-tecnica="${ej.sesionId}" aria-expanded="${abierta}" aria-label="Ver técnica">${OJO}</button>
+          <button class="ojo" data-cambiar="${ej.sesionId}" aria-expanded="${cambioAbierto === ej.sesionId}"
+                  aria-label="Cambiar ejercicio">${CAMBIO}</button>
+        </div>
+      </div>
+      ${ej.original ? `<div class="sustituido">En vez de ${esc(ej.original)}${ej.temporal ? " · solo hoy" : ""}</div>` : ""}`;
+
+    if (cambioAbierto === ej.sesionId) html += cambioHTML(ej);
 
     if (abierta) {
       html += `<div class="tecnica"><div id="lienzo"></div><ul class="claves">${
@@ -444,14 +520,17 @@ function pintarDia() {
       }
       html += `</div>`;
     } else {
-      html += `<div class="carga carga--corporal">Peso corporal · ~${equipo.cargaReal(ej, 0, cazador.pesoCorporal)} kg efectivos</div>`;
+      html += `<div class="carga carga--corporal">Peso corporal · ~${equipo.cargaReal(ej, 0, pesoActual())} kg efectivos</div>`;
     }
 
+    const contando = cron?.sesionId === ej.sesionId;
     html += `<div class="reps">
         <span class="reps__et">${enSeg ? "Segundos" : "Reps"} logradas</span>
+        ${enSeg ? `<button class="crono ${contando ? "crono--on" : ""}" data-crono="${ej.sesionId}">
+            ${contando ? "Parar" : "Cronómetro"}</button>` : ""}
         <div class="reps__caja">
           <button class="mini" data-reps="${ej.sesionId}" data-dir="-1" aria-label="Menos">−</button>
-          <span class="reps__val">${st.reps}</span>
+          <span class="reps__val" data-cronoval="${ej.sesionId}">${st.reps}</span>
           <button class="mini" data-reps="${ej.sesionId}" data-dir="1" aria-label="Más">+</button>
         </div>
       </div>
@@ -460,7 +539,12 @@ function pintarDia() {
     </section>`;
   });
 
-  html += `<div class="acciones">
+  html += `<div class="nota">
+      <label class="nota__et" for="notaSesion">Notas de la sesión</label>
+      <textarea id="notaSesion" class="nota__txt" rows="2" maxlength="280"
+        placeholder="El hombro tocado, dormí cinco horas, la barra se me fue...">${esc(E.nota || "")}</textarea>
+    </div>
+    <div class="acciones">
       <button class="btn btn--arise" id="terminar">Arise · terminar sesión</button>
       <button class="btn btn--fantasma" id="vaciar">Vaciar día</button>
     </div>`;
@@ -589,6 +673,10 @@ function pintarEjercicio() {
   const kgActual = E.pesos[clave] ?? ej.kgInicial ?? 0;
   const mejor = mias.reduce((a, f) => Math.max(a, f.kg || 0), 0);
   const volumen = mias.reduce((a, f) => a + (f.volumen || 0), 0);
+  const marca = P.mejorMarca(filas, clave);
+  const ultimaVez = mias.length
+    ? Math.round((new Date(hoy()) - new Date(mias[mias.length - 1].f)) / 86400000)
+    : "—";
 
   const puntosPeso = mias.map(f => ({ f: f.f, v: f.kg }));
   const puntosVol = mias.map(f => ({ f: f.f, v: Math.round(f.volumen) }));
@@ -604,9 +692,11 @@ function pintarEjercicio() {
 
     <div class="atributos">
       <div class="atr"><span class="atr__cl">AHORA</span><span class="atr__val">${kgActual}${ej.implemento === "corporal" ? "" : " kg"}</span><span class="atr__nom">Carga actual</span></div>
-      <div class="atr"><span class="atr__cl">TOPE</span><span class="atr__val">${mejor || "—"}${mejor ? " kg" : ""}</span><span class="atr__nom">Mejor marca</span></div>
+      <div class="atr"><span class="atr__cl">1RM</span><span class="atr__val">${marca || "—"}${marca ? " kg" : ""}</span><span class="atr__nom">Máximo estimado</span></div>
+      <div class="atr"><span class="atr__cl">TOPE</span><span class="atr__val">${mejor || "—"}${mejor ? " kg" : ""}</span><span class="atr__nom">Más peso movido</span></div>
       <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${mias.length}</span><span class="atr__nom">Sesiones</span></div>
       <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Acumulado</span></div>
+      <div class="atr"><span class="atr__cl">ÚLTIMA</span><span class="atr__val">${ultimaVez}</span><span class="atr__nom">Días desde</span></div>
     </div>
 
     ${hayGraficas ? `
@@ -631,9 +721,14 @@ function pintarEjercicio() {
     ${mias.length ? `<div class="vt">
       <div class="vt__cab">Registro</div>
       <table class="tabla">
-        <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>Volumen</th></tr>
-        ${[...mias].reverse().map(f => `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
-          <td>${f.series}×${f.reps}</td><td>${miles(f.volumen)} kg</td></tr>`).join("")}
+        <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>1RM</th></tr>
+        ${[...mias].reverse().map(f => {
+          const m = P.e1RMde(f);
+          return `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
+            <td>${f.series}×${f.reps}</td>
+            <td>${m ? `${m} kg${m === marca ? " ★" : ""}` : "—"}</td></tr>
+            ${f.nota ? `<tr class="fila-nota"><td colspan="4">“${esc(f.nota)}”</td></tr>` : ""}`;
+        }).join("")}
       </table>
     </div>` : ""}`;
 
@@ -672,6 +767,78 @@ function pintarLogros() {
           </div>`;
         }).join("")}
       </div>`).join("")}`;
+}
+
+/* ============================================================
+   MAPA DE CONSTANCIA
+   La racha da un número; esto da la forma: dónde se rompió y cuánto
+   duró. Escala secuencial de un solo tono, de claro a oscuro, con los
+   cortes puestos en los tercios del propio historial — así el mapa
+   dice algo tanto si mueves cinco toneladas por sesión como si mueves
+   una.
+   ============================================================ */
+const SEMANAS_MAPA = 16;
+
+function mapaHTML() {
+  const porDia = new Map();
+  for (const s of P.sesiones(filas)) porDia.set(s.f, (porDia.get(s.f) || 0) + s.volumen);
+  if (!porDia.size) return "";
+
+  const vols = [...porDia.values()].sort((a, b) => a - b);
+  const corte = p => vols[Math.floor(vols.length * p)] ?? 0;
+  const bajo = corte(0.34), medio = corte(0.67);
+  const nivel = v => !v ? 0 : v <= bajo ? 1 : v <= medio ? 2 : 3;
+
+  /* Se empieza en lunes para que cada columna sea una semana natural. */
+  const fin = new Date(hoy());
+  const inicio = new Date(fin);
+  inicio.setDate(inicio.getDate() - (SEMANAS_MAPA * 7 - 1));
+  inicio.setDate(inicio.getDate() - ((inicio.getDay() + 6) % 7));
+
+  const celdas = [];
+  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+    const f = d.toISOString().slice(0, 10);
+    const v = porDia.get(f) || 0;
+    celdas.push(`<i data-nivel="${nivel(v)}" title="${f}${v ? ` · ${miles(v)} kg` : ""}"></i>`);
+  }
+
+  return `<div class="vt">
+      <div class="vt__cab">Constancia</div>
+      <div class="mapa">${celdas.join("")}</div>
+      <div class="mapa__pie">
+        <span>${SEMANAS_MAPA} semanas</span>
+        <span class="mapa__leyenda">menos
+          <i data-nivel="0"></i><i data-nivel="1"></i><i data-nivel="2"></i><i data-nivel="3"></i>
+        más</span>
+      </div>
+    </div>`;
+}
+
+/* ---------- peso corporal ---------- */
+function corporalHTML() {
+  const h = E.corporal || [];
+  const actual = borradorPeso();
+  const sinGuardar = pesoBorrador !== null && pesoBorrador !== pesoActual();
+  const primero = h.length ? h[0].kg : null;
+  const cambio = primero !== null && h.length > 1 ? +(actual - primero).toFixed(1) : null;
+
+  return `<div class="vt">
+      <div class="vt__cab">Peso corporal</div>
+      <p class="vt__txt">Se usa para contar el volumen real de flexiones, dominadas y fondos,
+      así que conviene que esté al día.${cambio !== null
+        ? ` Desde el primer apunte: <b>${cambio > 0 ? "+" : ""}${cambio} kg</b>.` : ""}</p>
+      <div class="corporal">
+        <button class="mini" data-corporal="-1">−</button>
+        <span class="corporal__val">${actual}<small>kg</small></span>
+        <button class="mini" data-corporal="1">+</button>
+        <button class="btn ${sinGuardar ? "btn--go" : ""}" id="anotarPeso">Anotar hoy</button>
+      </div>
+      ${h.length >= 2 ? grafica({
+        nombre: "Peso corporal", tipo: "linea", unidad: " kg",
+        puntos: h.map(p => ({ f: p.f, v: p.kg })),
+        color: colorDe("--exito"), sel: puntoSel.tipo === "linea" ? puntoSel.i : null
+      }) : `<p class="vt__pie">Con dos apuntes en días distintos aparece la gráfica.</p>`}
+    </div>`;
 }
 
 /* ============================================================
@@ -737,6 +904,9 @@ function pintarPerfil() {
       <p class="vt__pie">Cuentan los días entre sesiones, no los días seguidos:
       descansar forma parte del plan, desaparecer no.</p>
     </div>` : ""}
+
+    ${mapaHTML()}
+    ${corporalHTML()}
 
     <div class="vt">
       <div class="vt__cab">Arsenal</div>
@@ -914,6 +1084,50 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden && idDescanso) ticDescanso();
 });
 
+/* ---------- pantalla encendida ----------
+   Entre series pasan dos minutos y el móvil se bloquea solo; vuelves
+   con las manos ocupadas y hay que despertarlo. El bloqueo se suelta
+   al terminar la sesión, y el navegador lo suelta también al pasar a
+   segundo plano: por eso se vuelve a pedir al recuperar el foco. */
+async function mantenerPantalla(encendida) {
+  try {
+    if (encendida && !candado && navigator.wakeLock) {
+      candado = await navigator.wakeLock.request("screen");
+      candado.addEventListener("release", () => { candado = null; });
+    } else if (!encendida && candado) {
+      await candado.release();
+      candado = null;
+    }
+  } catch (e) { candado = null; }        // sin permiso o sin soporte: da igual
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && E?.iniciada) mantenerPantalla(true);
+});
+
+/* ---------- cronómetro de isométricos ----------
+   La plancha se mide en segundos y contarlos de cabeza mientras
+   aguantas no sale bien. Escribe directamente en el número para no
+   repintar la vista entera cuatro veces por segundo. */
+function alternarCrono(ej) {
+  if (cron?.sesionId === ej.sesionId) { pararCrono(ej); return; }
+  if (cron) clearInterval(cron.id);
+  cron = { sesionId: ej.sesionId, desde: Date.now() };
+  cron.id = setInterval(() => {
+    const el = document.querySelector(`[data-cronoval="${cron.sesionId}"]`);
+    if (el) el.textContent = Math.round((Date.now() - cron.desde) / 1000);
+  }, 250);
+  repintarQuieto();
+}
+
+async function pararCrono(ej) {
+  if (!cron) return;
+  const segundos = Math.round((Date.now() - cron.desde) / 1000);
+  clearInterval(cron.id);
+  cron = null;
+  if (ej && segundos > 0) { serie(ej).reps = segundos; await guardar(); }
+  repintarQuieto();
+}
+
 /* ---------- guardar ---------- */
 const guardar = () => DB.estado.guardar(E);
 
@@ -948,9 +1162,12 @@ async function terminarSesion() {
 }
 
 async function cerrarSesion() {
-  const d = diaDe(diaActivo);
-  const nuevas = [];
+  const d = dia(diaActivo);
+  const nuevas = [], records = [];
   let subidas = 0, volumen = 0, xp = 0, completa = true;
+  /* Se lee del campo, no del estado: pulsar Arise sin salir del texto
+     dispara el guardado justo después de este momento. */
+  const nota = ($("notaSesion")?.value ?? E.nota ?? "").trim().slice(0, 280);
   const fecha = hoy(), ahora = new Date();
   const antes = P.estadisticas(filas);
 
@@ -967,7 +1184,7 @@ async function cerrarSesion() {
     if (!hechas) { delete E.sesion[ej.sesionId]; continue; }
 
     const kg = pesoDe(ej);
-    const carga = equipo.cargaReal(ej, kg, cazador.pesoCorporal);
+    const carga = equipo.cargaReal(ej, kg, pesoActual());
     const vol = carga * hechas * st.reps;
     const xpEj = P.xpDeSerie(carga, st.reps) * hechas;
 
@@ -977,10 +1194,16 @@ async function cerrarSesion() {
       E.listos[ej.clave] = true;
     }
 
+    /* Récord contra la mejor marca anterior de ese ejercicio. La primera
+       vez no cuenta: cualquier número sería un récord y no significa nada. */
+    const marcaPrevia = P.mejorMarca(filas, ej.clave);
+    const marca = P.e1RM(carga, st.reps);
+    if (marcaPrevia > 0 && marca > marcaPrevia) records.push({ nombre: ej.nombre, marca });
+
     nuevas.push({
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-      implemento: ej.implemento, kg, carga, minutos,
+      implemento: ej.implemento, kg, carga, minutos, nota,
       series: hechas, reps: st.reps, volumen: vol, xp: xpEj
     });
     volumen += vol; xp += xpEj;
@@ -997,7 +1220,12 @@ async function cerrarSesion() {
   await DB.historial.anadir(nuevas);
   filas.push(...nuevas);
   tecnicaAbierta = null;
+  cambioAbierto = null;
   E.iniciada = null;
+  E.nota = "";
+  /* Los cambios de "solo hoy" mueren con la sesión. */
+  for (const k of Object.keys(E.cambios || {})) if (E.cambios[k].temporal) delete E.cambios[k];
+  mantenerPantalla(false);
   await guardar();
 
   /* El orden de los avisos importa: primero lo gordo. */
@@ -1008,15 +1236,19 @@ async function cerrarSesion() {
     aviso(`<b>Subida de nivel</b><span>Nivel ${despues.nivel}</span>`, "nivel");
   }
 
+  for (const r of records) {
+    aviso(`<b>Nuevo récord</b><span>${esc(r.nombre)} · ${r.marca} kg estimados</span>`, "rango");
+  }
+
   const nuevos = await revisarLogros({
     dia: d.n, volumen, series: nuevas.length, subidas, completa,
-    hora: ahora.getHours(), diasParado, minutos
+    hora: ahora.getHours(), diasParado, minutos, records: records.length
   });
 
   /* De vuelta al tablero: se ve la misión marcada y qué queda de semana. */
   vista = "misiones";
   pintar(); arriba();
-  if (!nuevos.length && despues.nivel === antes.nivel) {
+  if (!nuevos.length && !records.length && despues.nivel === antes.nivel) {
     const tiempo = minutos ? ` · ${minutos} min` : "";
     aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
   }
@@ -1114,6 +1346,52 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.id === "irACopia") { vista = "perfil"; pintar(); arriba(); return; }
+
+  /* --- cambiar un ejercicio por otro del mismo patrón --- */
+  if (b.dataset.cambiar) {
+    cambioAbierto = cambioAbierto === b.dataset.cambiar ? null : b.dataset.cambiar;
+    tecnicaAbierta = null;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.modo) { cambioTemporal = b.dataset.modo === "true"; repintarQuieto(); return; }
+  if (b.dataset.poner !== undefined) {
+    const [sesionId, clave] = b.dataset.poner.split("|");
+    E.cambios = E.cambios || {};
+    if (clave) E.cambios[sesionId] = { ej: clave, temporal: cambioTemporal };
+    else delete E.cambios[sesionId];
+    delete E.sesion[sesionId];          // el hueco arranca limpio
+    cambioAbierto = null;
+    await guardar();
+    repintarQuieto();
+    aviso(clave ? "Ejercicio cambiado" : "Ejercicio original restaurado");
+    return;
+  }
+
+  if (b.dataset.corporal) {
+    const paso = +b.dataset.corporal * 0.5;
+    pesoBorrador = Math.max(30, Math.min(250, +(borradorPeso() + paso).toFixed(1)));
+    repintarQuieto();
+    return;
+  }
+  if (b.id === "anotarPeso") {
+    const kg = borradorPeso();
+    E.corporal = (E.corporal || []).filter(p => p.f !== hoy());
+    E.corporal.push({ f: hoy(), kg });
+    E.corporal.sort((a, b) => a.f.localeCompare(b.f));
+    pesoBorrador = null;
+    await guardar();
+    pintar();
+    aviso(`Peso anotado · ${kg} kg`);
+    return;
+  }
+
+  if (b.dataset.crono) {
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.crono);
+    if (cron?.sesionId === ej.sesionId) await pararCrono(ej);
+    else alternarCrono(ej);
+    return;
+  }
   if (b.dataset.tema) { ponerTema(b.dataset.tema); return; }
 
   /* --- técnica --- */
@@ -1131,7 +1409,7 @@ document.addEventListener("click", async e => {
 
   /* --- carga --- */
   if (b.dataset.peso) {
-    const ej = diaDe(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.peso);
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.peso);
     const pasos = escalon(ej), i = pasos.indexOf(pesoDe(ej)) + (+b.dataset.dir);
     if (i >= 0 && i < pasos.length) {
       E.pesos[ej.clave] = pasos[i];
@@ -1147,7 +1425,7 @@ document.addEventListener("click", async e => {
 
   /* --- reps --- */
   if (b.dataset.reps) {
-    const ej = diaDe(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.reps);
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.reps);
     const st = serie(ej);
     st.reps = Math.max(0, st.reps + (+b.dataset.dir) * (ej.unidad === "segundos" ? 5 : 1));
     await guardar();
@@ -1157,11 +1435,14 @@ document.addEventListener("click", async e => {
 
   /* --- marcar serie --- */
   if (b.dataset.serie) {
-    const ej = diaDe(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.serie);
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.serie);
     const st = serie(ej), k = +b.dataset.k;
     st.hechas[k] = !st.hechas[k];
-    /* La primera serie marcada arranca el cronómetro de la sesión. */
-    if (st.hechas[k] && !E.iniciada) E.iniciada = new Date().toISOString();
+    /* La primera serie marcada arranca la sesión: cronómetro y pantalla. */
+    if (st.hechas[k] && !E.iniciada) {
+      E.iniciada = new Date().toISOString();
+      mantenerPantalla(true);
+    }
     await guardar();
     repintarQuieto();
     if (st.hechas[k]) empezarDescanso(+b.dataset.descanso);
@@ -1171,8 +1452,9 @@ document.addEventListener("click", async e => {
   /* --- acciones --- */
   if (b.id === "terminar") { await terminarSesion(); return; }
   if (b.id === "vaciar") {
-    diaDe(diaActivo).ejercicios.forEach(ej => delete E.sesion[ej.sesionId]);
+    dia(diaActivo).ejercicios.forEach(ej => delete E.sesion[ej.sesionId]);
     E.iniciada = null;
+    mantenerPantalla(false);
     await guardar(); pintar(); aviso("Día vaciado");
     return;
   }
@@ -1190,7 +1472,7 @@ document.addEventListener("click", async e => {
       } else {
         f.kg = Math.max(0, f.kg + dir * 5);
       }
-      f.carga = ej ? equipo.cargaReal(ej, f.kg, cazador.pesoCorporal) : f.kg;
+      f.carga = ej ? equipo.cargaReal(ej, f.kg, pesoActual()) : f.kg;
     }
     if (b.dataset.campo === "series") f.series = Math.max(1, f.series + dir);
     if (b.dataset.campo === "reps")   f.reps   = Math.max(1, f.reps + dir);
@@ -1258,6 +1540,7 @@ document.addEventListener("click", e => {
 });
 
 document.addEventListener("change", async e => {
+  if (e.target.id === "notaSesion") { E.nota = e.target.value.trim(); await guardar(); return; }
   if (e.target.id !== "ficheroCopia") return;
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
