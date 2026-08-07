@@ -475,7 +475,7 @@ function pintarDia() {
       <div class="ej__cab">
         <div class="ej__txt">
           <h3 class="ej__nom"><button class="ej__link" data-ficha="${ej.clave}">${esc(ej.nombre)}</button></h3>
-          <div class="ej__meta">${ej.series} × ${ej.min}–${ej.max}${enSeg ? " s" : " reps"} · RIR 2–3${ej.nota ? ` · <em>${esc(ej.nota)}</em>` : ""}</div>
+          <div class="ej__meta">${ej.series} × ${ej.min}–${ej.max}${enSeg ? " s" : " reps"}${ej.unilateral ? ` por ${ej.unilateral} <em>(izq + der)</em>` : ""} · RIR 2–3${ej.nota ? ` · <em>${esc(ej.nota)}</em>` : ""}</div>
           <div class="ej__musc">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
           ${E.listos[ej.clave] ? `<span class="marca">Sube el peso</span>` : ""}
         </div>
@@ -730,7 +730,7 @@ function pintarEjercicio() {
         ${[...mias].reverse().map(f => {
           const m = P.marcaDe(f);
           return `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
-            <td>${f.series}×${f.reps}</td>
+            <td>${f.series}×${f.reps}${ej.unilateral ? ` /${ej.unilateral}` : ""}</td>
             <td>${m ? `${m}${corporal ? "" : " kg"}${m === marca ? " ★" : ""}` : "—"}</td></tr>
             ${f.nota ? `<tr class="fila-nota"><td colspan="4">“${esc(f.nota)}”</td></tr>` : ""}`;
         }).join("")}
@@ -941,7 +941,7 @@ function pintarPerfil() {
         ${ultimas.map(f => `
           <tr class="${editando === f.id ? "fila--abierta" : ""}" data-fila="${f.id}">
             <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}</td><td>${f.kg} kg</td>
-            <td>${f.series}×${f.reps}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
+            <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
           </tr>
           ${editando === f.id ? editor(f) : ""}`).join("")}
       </table>
@@ -991,6 +991,10 @@ function pintarManual() {
 
     <h2>Cómo elegir el peso</h2>
     <p>Cada serie termina con <strong>2–3 reps en recámara</strong>. Si acabas y podrías hacer cinco más, es calentamiento. Si fallas antes de llegar al rango, has puesto demasiado. Ajusta el mismo día, no la semana siguiente.</p>
+
+    <h2>Los que van por lado</h2>
+    <p>La búlgara, el remo landmine y el press landmine salen marcados como <em>(izq + der)</em>. El rango de reps es de <strong>un solo miembro</strong>, y la serie no está hecha hasta que has completado los dos: marcas el botón al terminar el segundo. El descanso es entre series — entre pierna y pierna basta con lo que tardas en cambiar.</p>
+    <p>Anota las reps de un lado, las que has hecho con el más flojo. El Sistema ya cuenta el volumen y la XP por los dos.</p>
 
     <h2>Doble progresión</h2>
     <p>Tus discos solo permiten saltos de 10 kg, y eso es brutal en press militar (30→40 es un +33%). Por eso no se sube peso hasta agotar las reps:</p>
@@ -1190,8 +1194,9 @@ async function cerrarSesion() {
 
     const kg = pesoDe(ej);
     const carga = equipo.cargaReal(ej, kg, pesoActual());
-    const vol = carga * hechas * st.reps;
-    const xpEj = P.xpDeSerie(carga, st.reps) * hechas;
+    const lados = P.ladosDe(ej);
+    const vol = carga * hechas * st.reps * lados;
+    const xpEj = P.xpDeSerie(carga, st.reps) * hechas * lados;
 
     /* Rango de reps agotado con todas las series: toca subir peso. */
     if (hechas === ej.series && st.reps >= ej.max && ej.implemento !== "mancuerna" && ej.implemento !== "corporal") {
@@ -1211,7 +1216,7 @@ async function cerrarSesion() {
     nuevas.push({
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-      implemento: ej.implemento, kg, carga, minutos, nota,
+      implemento: ej.implemento, kg, carga, minutos, nota, lados,
       series: hechas, reps: st.reps, volumen: vol, xp: xpEj
     });
     volumen += vol; xp += xpEj;
@@ -1485,8 +1490,9 @@ document.addEventListener("click", async e => {
     if (b.dataset.campo === "series") f.series = Math.max(1, f.series + dir);
     if (b.dataset.campo === "reps")   f.reps   = Math.max(1, f.reps + dir);
     /* Volumen y XP se recalculan: si no, la corrección mentiría en el nivel. */
-    f.volumen = f.carga * f.series * f.reps;
-    f.xp = P.xpDeSerie(f.carga, f.reps) * f.series;
+    const lados = P.ladosDe(f);
+    f.volumen = f.carga * f.series * f.reps * lados;
+    f.xp = P.xpDeSerie(f.carga, f.reps) * f.series * lados;
     await DB.historial.guardar(f);
     repintarQuieto();
     return;
@@ -1508,8 +1514,8 @@ document.addEventListener("click", async e => {
 
   if (b.id === "expCsv") {
     if (!filas.length) { aviso("Todavía no hay sesiones guardadas"); return; }
-    const csv = "fecha,semana,dia,ejercicio,kg,carga_real,series,reps,volumen,xp\n" +
-      filas.map(f => [f.f, f.semana, f.dia, `"${f.nombre}"`, f.kg, f.carga, f.series, f.reps, f.volumen, f.xp].join(",")).join("\n");
+    const csv = "fecha,semana,dia,ejercicio,kg,carga_real,series,reps,lados,volumen,xp\n" +
+      filas.map(f => [f.f, f.semana, f.dia, `"${f.nombre}"`, f.kg, f.carga, f.series, f.reps, P.ladosDe(f), f.volumen, f.xp].join(",")).join("\n");
     bajar("sistema-historial.csv", csv, "text/csv");
     aviso(filas.length + " series exportadas");
     return;

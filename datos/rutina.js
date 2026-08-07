@@ -29,7 +29,7 @@ export const RUTINA = {
         { ej: "muerto",   series: 4, min: 8,  max: 10, descanso: 150 },
         { ej: "pendlay",  series: 4, min: 8,  max: 12, descanso: 105 },
         { ej: "negdom",   series: 5, min: 3,  max: 5,  descanso: 105 },
-        { ej: "remolm",   series: 4, min: 12, max: 15, descanso: 75, nota: "Por lado." },
+        { ej: "remolm",   series: 4, min: 12, max: 15, descanso: 75 },
         { ej: "remoinv",  series: 3, min: 12, max: 18, descanso: 60 }
       ]
     },
@@ -38,7 +38,7 @@ export const RUTINA = {
       ejercicios: [
         { ej: "senta",    series: 4, min: 8,  max: 12, descanso: 150, nota: "Tempo 3-1-1." },
         { ej: "rdl",      series: 4, min: 12, max: 15, descanso: 105 },
-        { ej: "bulgara",  series: 3, min: 12, max: 15, descanso: 75, nota: "Por pierna." },
+        { ej: "bulgara",  series: 3, min: 12, max: 15, descanso: 75 },
         { ej: "hip",      series: 3, min: 15, max: 20, descanso: 90 },
         { ej: "gemelo",   series: 4, min: 20, max: 25, descanso: 60 }
       ]
@@ -47,7 +47,7 @@ export const RUTINA = {
       n: 4, nombre: "Hombros", lema: "Corona de hierro",
       ejercicios: [
         { ej: "militar",  series: 4, min: 8,  max: 12, descanso: 120 },
-        { ej: "presslm",  series: 4, min: 10, max: 12, descanso: 75, nota: "Por lado." },
+        { ej: "presslm",  series: 4, min: 10, max: 12, descanso: 75 },
         { ej: "lateral",  series: 4, min: 15, max: 25, descanso: 45 },
         { ej: "menton",   series: 3, min: 12, max: 15, descanso: 60 },
         { ej: "pajaro",   series: 3, min: 18, max: 25, descanso: 45 }

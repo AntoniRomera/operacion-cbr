@@ -14,6 +14,13 @@ export const xpDeSerie = (carga, reps) => Math.max(5, Math.round(carga * reps / 
 /* Bono por cerrar el día entero. Premia terminar, no picotear. */
 export const XP_MISION = 100;
 
+/* En los unilaterales una serie marcada son los dos miembros, pero las reps
+   que se guardan son las de un lado: sin esto la búlgara valdría la mitad de
+   lo que de verdad mueves. Vale tanto para un ejercicio del catálogo como
+   para una fila del historial; las filas viejas no traen el campo y se
+   quedan contadas como se guardaron. */
+export const ladosDe = x => x.lados || (x.unilateral ? 2 : 1);
+
 /* XP acumulada necesaria para estar en el nivel n.
    La curva está ajustada a sesiones reales de esta rutina, que rondan
    los 1.000-1.500 XP: los primeros niveles caen en la primera semana
@@ -82,7 +89,7 @@ export function estadisticas(filas) {
     else if (f.minutos) sesiones.set(clave, f.minutos);
     if (f.ej) ejercicios.add(f.ej);
     volumen += f.volumen || 0;
-    reps += (f.reps || 0) * (f.series || 0);
+    reps += (f.reps || 0) * (f.series || 0) * ladosDe(f);
     xp += f.xp || 0;
     /* Fuerza es peso levantado, no peso propio: si contaran los
        corporales, unas flexiones marcarían más que la banca. */

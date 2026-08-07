@@ -8,6 +8,9 @@
    implemento: barra · disco · landmine · mancuerna · corporal
    factorPeso: solo en los corporales, qué parte de tu peso mueves
                de verdad (para contar volumen y XP con cabeza)
+   unilateral: "pierna" o "lado" — las reps son de un solo miembro.
+               Una serie marcada son los dos, así que el volumen y la
+               XP van por partida doble.
    claves:     un "!" delante marca la que evita una lesión
    unidad:     "reps" salvo los isométricos, que van en segundos
    ============================================================ */
@@ -107,7 +110,7 @@ export const EJERCICIOS = {
   },
   remolm: {
     nombre: "Remo landmine 1 mano", grupo: "Espalda", patron: "Tirón horizontal",
-    implemento: "landmine", figura: "remolm", kgInicial: 20,
+    implemento: "landmine", figura: "remolm", kgInicial: 20, unilateral: "lado",
     musculos: ["Dorsal ancho", "Romboides", "Bíceps"],
     claves: [
       "Cadera atrás, torso hinchado hacia delante, pecho firme.",
@@ -153,7 +156,7 @@ export const EJERCICIOS = {
   },
   bulgara: {
     nombre: "Búlgara con disco", grupo: "Piernas", patron: "Unilateral",
-    implemento: "disco", figura: "bulgara", kgInicial: 15,
+    implemento: "disco", figura: "bulgara", kgInicial: 15, unilateral: "pierna",
     musculos: ["Cuádriceps", "Glúteo", "Estabilizadores"],
     claves: [
       "Empeine del pie trasero sobre el banco, no la puntera.",
@@ -199,7 +202,7 @@ export const EJERCICIOS = {
   },
   presslm: {
     nombre: "Press landmine unilateral", grupo: "Hombros", patron: "Empuje vertical",
-    implemento: "landmine", figura: "presslm", kgInicial: 15,
+    implemento: "landmine", figura: "presslm", kgInicial: 15, unilateral: "lado",
     musculos: ["Deltoides anterior", "Serrato", "Core"],
     claves: [
       "De pie o de rodillas, mirando al ancla de la barra.",
