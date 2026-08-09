@@ -28,7 +28,7 @@ css/sistema.css         los estilos y los dos temas
 
 datos/equipo.js         barra y discos que tienes → cargas posibles
 datos/ejercicios.js     catálogo: músculos, patrón, claves de técnica
-datos/rutina.js         los cinco días, referenciando el catálogo
+datos/rutina.js         los cuatro días, referenciando el catálogo
 datos/figuras.js        geometría de los muñecos animados
 datos/logros.js         catálogo de logros y sus condiciones
 

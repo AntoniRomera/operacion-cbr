@@ -5,7 +5,7 @@
    texto y un único manejador de clics delegado en el documento.
    ============================================================ */
 
-import { RUTINA, dia as diaRutina } from "../datos/rutina.js";
+import { RUTINA, NUCLEO, bloques, dia as diaRutina } from "../datos/rutina.js";
 import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
@@ -68,6 +68,15 @@ const mmss = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 const miles = n => n.toLocaleString("es-ES");
 const hoy = () => new Date().toISOString().slice(0, 10);
 
+/* Cuánto se tarda en un bloque, para decidir si cabe en el hueco que
+   tienes. Cada serie son unos 40 s de trabajo más su descanso, y en los
+   unilaterales el trabajo va doble. Redondeado hacia arriba a cinco. */
+function estimaMinutos(lista) {
+  const seg = lista.reduce((a, e) =>
+    a + e.series * (e.descanso + 40 * (e.unilateral ? 2 : 1)), 0);
+  return Math.max(5, Math.round(seg / 300) * 5);
+}
+
 /**
  * El día de la rutina con las sustituciones del cazador aplicadas.
  * Se cambia el movimiento, no la prescripción: las series, el rango de
@@ -84,7 +93,7 @@ function dia(n) {
       return {
         ...ejercicio(c.ej),
         series: e.series, min: e.min, max: e.max, descanso: e.descanso, nota: e.nota,
-        sesionId: e.sesionId, original: e.nombre, temporal: c.temporal
+        bloque: e.bloque, sesionId: e.sesionId, original: e.nombre, temporal: c.temporal
       };
     })
   };
@@ -296,70 +305,103 @@ function pintarNav() {
    TABLERO DE MISIONES
    La portada: qué toca hoy y cómo va la semana de un vistazo.
    ============================================================ */
+/**
+ * Qué ejercicios de un día ya están registrados esta semana.
+ * En los días sueltos es la única forma de saber qué queda: se pueden
+ * cerrar en tres ratos distintos, y cada rato deja su propia sesión.
+ */
+function registradosSemana(n) {
+  return new Set(filas.filter(f => f.semana === E.semana && f.dia === n).map(f => f.ej));
+}
+
 function estadoDia(n) {
-  const hechosSemana = new Set(filas.filter(f => f.semana === E.semana).map(f => f.dia));
   const d = dia(n);
+  const ya = registradosSemana(n);
   const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
   const marcadas = d.ejercicios.reduce(
     (a, e) => a + (E.sesion[e.sesionId]?.hechas.filter(Boolean).length || 0), 0);
+
+  /* Los bloques de un día suelto se dan por hechos cuando todos sus
+     ejercicios han caído esta semana, sin importar en qué sesión. */
+  const grupos = bloques(d).map(b => ({
+    ...b, hecho: b.ejercicios.every(e => ya.has(e.clave))
+  }));
+
   return {
-    dia: d, total, marcadas,
-    hecha: hechosSemana.has(n),
-    enCurso: marcadas > 0
+    dia: d, total, marcadas, grupos,
+    cerrados: d.ejercicios.filter(e => ya.has(e.clave)).length,
+    bloquesHechos: grupos.filter(b => b.hecho).length,
+    /* Un día normal se cierra de una vez; uno suelto, cuando no queda
+       ni un ejercicio por tocar. */
+    hecha: d.suelto ? d.ejercicios.every(e => ya.has(e.clave)) : ya.size > 0,
+    enCurso: marcadas > 0 || (d.suelto && ya.size > 0)
   };
 }
 
 function pintarMisiones() {
   stopAnim();
   const estados = RUTINA.dias.map(d => estadoDia(d.n));
-  const pendiente = estados.find(e => !e.hecha) || estados[0];
+  const nucleo = estados.filter(e => !e.dia.suelto);
+  const pendiente = nucleo.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
   const restantes = estados.filter(e => e.dia.n !== pendiente.dia.n);
-  const hechas = estados.filter(e => e.hecha).length;
+  const hechas = nucleo.filter(e => e.hecha).length;
+  const semanaHecha = hechas === nucleo.length;
 
   const tarjeta = (e, destacada) => {
     const clases = ["tarjeta"];
     if (destacada) clases.push("tarjeta--destacada");
+    if (e.dia.suelto) clases.push("tarjeta--suelta");
     if (e.hecha) clases.push("tarjeta--hecha");
     else if (e.enCurso) clases.push("tarjeta--curso");
+
     /* En las pequeñas cabe una línea justa: solo las series. */
     const pie = e.hecha ? "Completada"
+              : e.dia.suelto && e.bloquesHechos ? `${e.bloquesHechos}/${e.grupos.length} bloques`
               : e.enCurso ? `En curso · ${e.marcadas}/${e.total}`
+              : e.dia.suelto ? `${e.grupos.length} bloques · ${e.total} series`
               : destacada ? `${e.dia.ejercicios.length} ejercicios · ${e.total} series`
               : `${e.total} series`;
+    const via = e.dia.suelto ? e.cerrados / e.dia.ejercicios.length : e.marcadas / e.total;
     return `<button class="${clases.join(" ")}" data-mision="${e.dia.n}">
         <span class="tarjeta__n">${e.dia.n}</span>
-        ${destacada ? `<span class="tarjeta__eti">Siguiente misión</span>` : ""}
+        ${destacada ? `<span class="tarjeta__eti">Siguiente misión</span>`
+                    : `<span class="tarjeta__cuando">${esc(e.dia.cuando)}</span>`}
         <h3 class="tarjeta__nom">${esc(e.dia.nombre)}</h3>
         <span class="tarjeta__lema">${esc(e.dia.lema)}</span>
+        ${destacada ? `<span class="tarjeta__cuando">${esc(e.dia.cuando)} · ${esc(e.dia.trabaja)}</span>` : ""}
         <span class="tarjeta__pie">${pie}</span>
-        ${e.enCurso && !e.hecha ? `<span class="tarjeta__via"><i style="width:${(e.marcadas / e.total * 100).toFixed(0)}%"></i></span>` : ""}
+        ${!e.hecha && via > 0 ? `<span class="tarjeta__via"><i style="width:${(via * 100).toFixed(0)}%"></i></span>` : ""}
       </button>`;
   };
 
   const r = P.racha(filas);
   const st = P.estadisticas(filas);
+  const remate = estados.find(e => e.dia.suelto);
 
   $("app").innerHTML = `
     ${penalizacionHTML(r)}
     <div class="portada">
       <div class="portada__cab">Semana ${E.semana}</div>
-      <h2 class="portada__tit">${hechas === RUTINA.dias.length ? "Semana completada" : "Misiones diarias"}</h2>
+      <h2 class="portada__tit">${semanaHecha ? "Semana completada" : "Misiones diarias"}</h2>
       <div class="portada__prog">
-        <span class="portada__puntos">${RUTINA.dias.map((d, i) =>
-          `<i class="${estados[i].hecha ? "on" : ""}"></i>`).join("")}</span>
-        <span class="portada__txt">${hechas} de ${RUTINA.dias.length}</span>
+        <span class="portada__puntos">${nucleo.map(e =>
+          `<i class="${e.hecha ? "on" : ""}"></i>`).join("")}</span>
+        <span class="portada__txt">${hechas} de ${nucleo.length}${remate
+          ? ` · remate ${remate.bloquesHechos}/${remate.grupos.length}` : ""}</span>
         ${r.actual ? `<span class="racha ${r.enRiesgo ? "racha--riesgo" : ""}">Racha ${r.actual}</span>` : ""}
       </div>
       ${r.enRiesgo ? `<div class="portada__riesgo">
         ${r.margen === 0 ? "Hoy es el último día para mantener la racha"
                          : `Queda ${r.margen} día para mantener la racha`}</div>` : ""}
+      <div class="portada__pie">${NUCLEO.length} días sostienen la semana ·
+        descanso ${esc(RUTINA.descansos.toLowerCase())}</div>
     </div>
     ${copiaHTML(st)}
     <div class="tablero">
       ${tarjeta(pendiente, true)}
       ${restantes.map(e => tarjeta(e, false)).join("")}
     </div>
-    ${hechas === RUTINA.dias.length ? `<div class="acciones">
+    ${semanaHecha ? `<div class="acciones">
       <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
     </div>` : ""}`;
 }
@@ -447,24 +489,37 @@ function barraHTML(total) {
 
 function pintarDia() {
   const d = dia(diaActivo);
-  const total = d.ejercicios.reduce((a, e) => a + e.series, 0);
-  const hechas = d.ejercicios.reduce((a, e) => a + serie(e).hechas.filter(Boolean).length, 0);
+  const ya = registradosSemana(diaActivo);
+  /* En un día suelto, lo ya registrado esta semana sale plegado: la
+     cuenta de lo que queda no puede incluir lo que ya hiciste el martes. */
+  const cerrado = ej => d.suelto && ya.has(ej.clave);
+  const vivos = d.ejercicios.filter(ej => !cerrado(ej));
+  const total = vivos.reduce((a, e) => a + e.series, 0);
+  const hechas = vivos.reduce((a, e) => a + serie(e).hechas.filter(Boolean).length, 0);
 
-  const semana = new Set(filas.filter(f => f.semana === E.semana).map(f => f.dia));
+  const estados = RUTINA.dias.map(x => estadoDia(x.n));
 
   let html = `<div class="saltos">
-      ${RUTINA.dias.map(x => `<button class="salto ${semana.has(x.n) ? "hecha" : ""}"
-        data-dia="${x.n}" aria-current="${x.n === diaActivo}" aria-label="Día ${x.n}">${x.n}</button>`).join("")}
+      ${RUTINA.dias.map((x, i) => `<button class="salto ${estados[i].hecha ? "hecha" : ""} ${x.suelto ? "salto--suelto" : ""}"
+        data-dia="${x.n}" aria-current="${x.n === diaActivo}" aria-label="Día ${x.n}, ${esc(x.cuando)}">${x.n}</button>`).join("")}
+      <span class="saltos__hoy">${esc(d.cuando)}</span>
     </div>
     <div class="mision">
-      <div class="mision__cab">Misión diaria</div>
+      <div class="mision__cab">${d.suelto ? "Misión suelta" : "Misión diaria"}</div>
       <h2 class="mision__tit">${esc(d.nombre)}</h2>
       <div class="mision__lema">${esc(d.lema)}</div>
-      <div class="mision__meta">${d.ejercicios.length} ejercicios · ${hechas}/${total} series</div>
-      <div class="medidor">${d.ejercicios.map(e => `<i class="${serie(e).hechas.filter(Boolean).length === e.series ? "on" : ""}"></i>`).join("")}</div>
+      <div class="mision__meta">${vivos.length} ejercicio${vivos.length === 1 ? "" : "s"} ${
+        d.suelto && vivos.length < d.ejercicios.length ? "por hacer" : ""} · ${hechas}/${total} series</div>
+      <div class="medidor">${vivos.map(e => `<i class="${serie(e).hechas.filter(Boolean).length === e.series ? "on" : ""}"></i>`).join("")}</div>
     </div>`;
 
-  d.ejercicios.forEach(ej => {
+  if (d.suelto) {
+    html += `<div class="suelta">Bloques independientes. Haz los que te quepan y pulsa
+      <b>Arise</b>: lo guardado queda marcado el resto de la semana y la próxima vez
+      solo te sale lo que falta.</div>`;
+  }
+
+  const tarjetaEjercicio = ej => {
     const kg = pesoDe(ej), st = serie(ej), pasos = escalon(ej);
     const i = pasos.indexOf(kg);
     const unidad = ej.implemento === "mancuerna" ? "kg ×2" : "kg";
@@ -537,7 +592,26 @@ function pintarDia() {
       <div class="series">${st.hechas.map((v, k) =>
         `<button class="serie ${v ? "ok" : ""}" data-serie="${ej.sesionId}" data-k="${k}" data-descanso="${ej.descanso}">${v ? "✓" : k + 1}</button>`).join("")}</div>
     </section>`;
-  });
+  };
+
+  /* Un día normal es un solo bloque sin nombre y esto no se nota. */
+  for (const b of bloques(d)) {
+    if (b.nombre) {
+      const listo = b.ejercicios.every(cerrado);
+      html += `<div class="bloque ${listo ? "bloque--hecho" : ""}">
+          <span class="bloque__nom">${esc(b.nombre)}</span>
+          <span class="bloque__meta">${listo ? "Hecho esta semana"
+            : `${b.ejercicios.reduce((a, e) => a + e.series, 0)} series · ~${estimaMinutos(b.ejercicios)} min`}</span>
+        </div>`;
+    }
+    for (const ej of b.ejercicios) {
+      if (cerrado(ej)) html += `<div class="ej ej--cerrado">
+          <span class="ej__cerradoNom">${esc(ej.nombre)}</span>
+          <span class="ej__cerradoPie">Registrado esta semana</span>
+        </div>`;
+      else tarjetaEjercicio(ej);
+    }
+  }
 
   html += `<div class="nota">
       <label class="nota__et" for="notaSesion">Notas de la sesión</label>
@@ -545,7 +619,7 @@ function pintarDia() {
         placeholder="El hombro tocado, dormí cinco horas, la barra se me fue...">${esc(E.nota || "")}</textarea>
     </div>
     <div class="acciones">
-      <button class="btn btn--arise" id="terminar">Arise · terminar sesión</button>
+      <button class="btn btn--arise" id="terminar">Arise · ${d.suelto ? "guardar lo hecho" : "terminar sesión"}</button>
       <button class="btn btn--fantasma" id="vaciar">Vaciar día</button>
     </div>`;
 
@@ -989,6 +1063,36 @@ function pintarManual() {
       el Sistema comprueba si has desbloqueado algo.</p>
     </div>
 
+    <h2>La semana</h2>
+    <table class="tabla">
+      <tr><th>Día</th><th>Misión</th><th>Qué toca</th></tr>
+      ${RUTINA.dias.map(d => `<tr><td>${esc(d.cuando)}</td>
+        <td>${esc(d.nombre)}${d.suelto ? " · suelta" : ""}</td><td>${esc(d.trabaja)}</td></tr>`).join("")}
+      <tr><td>Miércoles</td><td>Descanso</td><td>Corta la semana por la mitad</td></tr>
+      <tr><td>Sáb y dom</td><td>Descanso</td><td>Aquí se crece, no en el garaje</td></tr>
+    </table>
+    <p>Dos días seguidos y uno libre, otros dos y el fin de semana entero. Nunca hay dos
+    sesiones seguidas que carguen lo mismo: el lunes empujas, el martes tiras, el jueves
+    la pierna descansada y el viernes solo queda el remate. El peso muerto pesado cae en
+    martes y el rumano en jueves, con un día de por medio, para no machacar la lumbar dos
+    veces sin recuperar.</p>
+
+    <h2>Las semanas de tres días</h2>
+    <p>Trabajar, estudiar y tener vida no siempre deja cuatro huecos. Por eso <strong>los
+    tres primeros días cubren el cuerpo entero</strong>: si solo salen tres, no te falta ni
+    un grupo grande. El cuarto es el que sobra cuando la semana viene mal.</p>
+    <ul>
+      <li><strong>Cae siempre el día 4</strong>, nunca uno de los tres primeros.</li>
+      <li>Si caen dos, corre los días: entrenas lunes, miércoles y viernes y ya está. Lo
+      que no se toca es el orden — empuje, tirón, pierna.</li>
+      <li>El día 4 va en <strong>tres bloques sueltos</strong> de unos doce minutos. Puedes
+      pegar uno al final de otra sesión, hacerlo un sábado por la mañana o partirlo en tres
+      ratos. Al pulsar Arise se guarda lo hecho y la próxima vez solo te sale lo que falta.</li>
+    </ul>
+    <div class="alerta"><p>No recuperes una sesión perdida metiéndola en el día de descanso
+    del miércoles. Ese día está ahí a propósito: sin él, cuatro sesiones en cuatro días
+    seguidos se acumulan y a las tres semanas se te caen las reps en todo.</p></div>
+
     <h2>Cómo elegir el peso</h2>
     <p>Cada serie termina con <strong>2–3 reps en recámara</strong>. Si acabas y podrías hacer cinco más, es calentamiento. Si fallas antes de llegar al rango, has puesto demasiado. Ajusta el mismo día, no la semana siguiente.</p>
 
@@ -1005,6 +1109,9 @@ function pintarManual() {
       <li>Subes 10 kg y vuelves abajo del rango. Otra vez a escalar.</li>
     </ul>
     <p>Si el salto de 10 te tumba, haz un microciclo: dos series con el peso nuevo y dos con el viejo hasta que aguantes las cuatro.</p>
+
+    <h2>Descarga</h2>
+    <p>Cada <strong>seis u ocho semanas</strong>, una semana suave: mismos días y mismos ejercicios, pero <strong>la mitad de series</strong> y el mismo peso. No se pierde nada — es cuando el cuerpo termina de asimilar lo anterior y lo que se vino abajo vuelve arriba. Si llevas tres semanas notando que las reps bajan en todo a la vez, no esperes a la octava: descarga ya.</p>
 
     <h2>Seguridad entrenando solo</h2>
     <div class="alerta"><p>Esto no es opcional. Entrenas en casa sin nadie que te saque de debajo de la barra.</p></div>
@@ -1179,6 +1286,9 @@ async function cerrarSesion() {
   const nota = ($("notaSesion")?.value ?? E.nota ?? "").trim().slice(0, 280);
   const fecha = hoy(), ahora = new Date();
   const antes = P.estadisticas(filas);
+  /* En un día suelto lo cerrado en otro rato de esta semana ya cuenta:
+     no puede impedir que este quede como misión completa. */
+  const ya = d.suelto ? registradosSemana(d.n) : new Set();
 
   /* Duración real, si se marcó alguna serie. Más de cinco horas es que
      la app se quedó abierta toda la tarde: mejor no guardar nada que
@@ -1189,7 +1299,7 @@ async function cerrarSesion() {
   for (const ej of d.ejercicios) {
     const st = serie(ej);
     const hechas = st.hechas.filter(Boolean).length;
-    if (hechas < ej.series) completa = false;
+    if (hechas < ej.series && !ya.has(ej.clave)) completa = false;
     if (!hechas) { delete E.sesion[ej.sesionId]; continue; }
 
     const kg = pesoDe(ej);
@@ -1263,7 +1373,8 @@ async function cerrarSesion() {
   pintar(); arriba();
   if (!nuevos.length && !records.length && despues.nivel === antes.nivel) {
     const tiempo = minutos ? ` · ${minutos} min` : "";
-    aviso(`<b>Misión completada</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
+    const titulo = d.suelto && !completa ? "Bloque guardado" : "Misión completada";
+    aviso(`<b>${titulo}</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
   }
   if (subidas) {
     setTimeout(() => aviso(`${subidas} ejercicio${subidas > 1 ? "s" : ""} listo${subidas > 1 ? "s" : ""} para subir peso`), 600);

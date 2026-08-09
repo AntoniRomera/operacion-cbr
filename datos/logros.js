@@ -45,7 +45,7 @@ export const LOGROS = [
 
   { id: "tressemana", rango: "D", icono: "⋯",
     nombre: "Sin penalización",
-    desc: "Tres días distintos en la misma semana.",
+    desc: "El núcleo de la semana: tres días distintos.",
     cond: c => c.diasEstaSemana >= 3 },
 
   { id: "dieztone", rango: "D", icono: "▰",
@@ -71,8 +71,8 @@ export const LOGROS = [
 
   { id: "semanaperfecta", rango: "C", icono: "★",
     nombre: "Semana perfecta",
-    desc: "Los cinco días de una misma semana.",
-    cond: c => c.diasEstaSemana >= 5 },
+    desc: "Los cuatro días de una misma semana, remate incluido.",
+    cond: c => c.diasEstaSemana >= 4 },
 
   { id: "doblefilo", rango: "C", icono: "⚔",
     nombre: "Doble filo",

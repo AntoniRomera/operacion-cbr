@@ -212,6 +212,7 @@ body.puerta-abierta .top{display:none}
 .portada__puntos i{width:20px;height:3px;border-radius:2px;background:var(--linea)}
 .portada__puntos i.on{background:var(--exito);box-shadow:0 0 8px rgba(52,211,153,.6)}
 .portada__txt{font-family:var(--mono);font-size:10.5px;color:var(--apagado);letter-spacing:.09em;text-transform:uppercase}
+.portada__pie{margin-top:9px;font-family:var(--mono);font-size:10px;color:var(--tenue);letter-spacing:.05em}
 
 .tablero{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 12px 0}
 .tarjeta{
@@ -254,6 +255,13 @@ body.puerta-abierta .top{display:none}
 .tarjeta--destacada .tarjeta__nom{font-size:25px}
 .tarjeta--destacada .tarjeta__lema{font-size:13px}
 .tarjeta--destacada .tarjeta__n{font-size:104px;bottom:-30px;right:8px}
+
+/* El día suelto no es una misión menos: es una que no obliga a un día
+   entero. Se marca con línea discontinua para que se lea de un vistazo. */
+.tarjeta__cuando{font-family:var(--mono);font-size:9.5px;color:var(--apagado);
+                 letter-spacing:.14em;text-transform:uppercase}
+.tarjeta--suelta{border-style:dashed}
+.tarjeta--suelta .tarjeta__cuando{color:var(--sis2)}
 
 /* ---------- racha y penalización ---------- */
 .racha{
@@ -336,13 +344,16 @@ body.puerta-abierta .top{display:none}
 .btn--peligro{color:var(--peligro);border-color:rgba(248,113,113,.4);font-size:12px;padding:11px}
 
 /* ---------- saltar de día dentro de la misión ---------- */
-.saltos{display:flex;gap:7px;padding:14px 16px 0}
+.saltos{display:flex;align-items:center;gap:7px;padding:14px 16px 0}
+.saltos__hoy{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--apagado);
+             letter-spacing:.16em;text-transform:uppercase}
 .salto{
   flex:0 0 auto;width:36px;height:36px;border-radius:9px;cursor:pointer;
   border:1px solid var(--linea);background:var(--panel2);color:var(--apagado);
   font-family:var(--mono);font-size:13px;transition:background .15s,color .15s,border-color .15s,box-shadow .15s;
 }
 .salto.hecha{border-color:rgba(52,211,153,.45);color:var(--exito)}
+.salto--suelto{border-style:dashed}
 .salto[aria-current="true"]{background:var(--sis);color:var(--sobreSis);border-color:var(--sis);
                             box-shadow:0 0 14px rgba(56,189,248,.45)}
 
@@ -413,11 +424,41 @@ body.puerta-abierta .top{display:none}
 .medidor i{flex:1;height:3px;background:var(--linea);border-radius:2px;transition:background .2s,box-shadow .2s}
 .medidor i.on{background:var(--exito);box-shadow:0 0 8px rgba(52,211,153,.6)}
 
+/* ---------- día suelto: aviso y separadores de bloque ---------- */
+.suelta{
+  margin:12px 12px 0;padding:11px 13px;font-size:12.5px;line-height:1.5;color:#BFCEE0;
+  border:1px dashed rgba(56,189,248,.4);border-radius:4px;background:rgba(56,189,248,.05);
+}
+.suelta b{color:var(--sis)}
+.bloque{
+  display:flex;align-items:baseline;gap:9px;margin:18px 14px 0;padding-bottom:6px;
+  border-bottom:1px solid var(--linea);
+}
+.bloque__nom{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.14em;
+             text-transform:uppercase;color:var(--sis)}
+.bloque__meta{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--tenue);
+              letter-spacing:.07em;text-transform:uppercase}
+.bloque--hecho .bloque__nom{color:var(--exito);opacity:.7}
+.bloque--hecho .bloque__meta{color:var(--exito)}
+.bloque--hecho .bloque__meta::before{content:"✓ "}
+
 /* ---------- tarjeta de ejercicio ---------- */
 .ej{
   position:relative;background:var(--panel);border:1px solid var(--linea);
   border-left:2px solid rgba(56,189,248,.55);border-radius:4px;margin:12px 12px 0;overflow:hidden;
 }
+/* Lo ya registrado esta semana se queda plegado: ocupa una línea y
+   recuerda que está hecho, sin tentarte a repetirlo. */
+.ej--cerrado{
+  display:flex;align-items:baseline;gap:10px;padding:11px 14px;
+  border-left-color:rgba(52,211,153,.5);opacity:.62;
+}
+.ej__cerradoNom{font-family:var(--display);font-size:14px;font-weight:600;letter-spacing:.04em;
+                text-transform:uppercase}
+.ej__cerradoPie{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--exito);
+                letter-spacing:.08em;text-transform:uppercase}
+.ej__cerradoPie::before{content:"✓ "}
+
 .ej__cab{padding:14px 14px 0;display:flex;gap:10px;align-items:flex-start}
 .ej__txt{flex:1;min-width:0}
 .ej__nom{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:.04em;
