@@ -342,7 +342,12 @@ function pintarMisiones() {
   stopAnim();
   const estados = RUTINA.dias.map(d => estadoDia(d.n));
   const nucleo = estados.filter(e => !e.dia.suelto);
-  const pendiente = nucleo.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
+  const diaInicio = E.diaInicio || 1;
+  const nNucleo = NUCLEO.length;
+  const nucleoOrdenado = [...nucleo].sort((a, b) =>
+    (a.dia.n - diaInicio + nNucleo) % nNucleo - (b.dia.n - diaInicio + nNucleo) % nNucleo
+  );
+  const pendiente = nucleoOrdenado.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
   const restantes = estados.filter(e => e.dia.n !== pendiente.dia.n);
   const hechas = nucleo.filter(e => e.hecha).length;
   const semanaHecha = hechas === nucleo.length;
@@ -1620,7 +1625,14 @@ document.addEventListener("click", async e => {
     aviso("Línea borrada");
     return;
   }
-  if (b.id === "semana") { E.semana++; await guardar(); await revisarLogros(); pintar(); aviso("Semana " + E.semana); return; }
+  if (b.id === "semana") {
+    const diasNucleo = filas.filter(f => f.semana === E.semana && NUCLEO.includes(f.dia));
+    const ultimo = diasNucleo.length ? Math.max(...diasNucleo.map(f => f.dia)) : 0;
+    E.diaInicio = ultimo ? (ultimo % NUCLEO.length) + 1 : 1;
+    diaActivo = E.diaInicio;
+    E.semana++;
+    await guardar(); await revisarLogros(); pintar(); aviso("Semana " + E.semana); return;
+  }
   if (b.id === "cambiarFicha") { abrirSelector(); return; }
 
   if (b.id === "expCsv") {

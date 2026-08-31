@@ -111,7 +111,7 @@ export function estadisticas(filas) {
    Días de gracia entre sesiones: la rutina tiene descansos, así que
    contar días seguidos castigaría por descansar. Lo que rompe la racha
    es desaparecer, no tomarse el domingo libre. */
-export const DIAS_GRACIA = 3;
+export const DIAS_GRACIA = 4;
 
 export function racha(filas) {
   const dias = [...new Set(filas.map(f => f.f))].sort();
