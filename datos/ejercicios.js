@@ -5,7 +5,9 @@
    si le pones una figura que exista en datos/figuras.js, sale
    dibujado; si no, se queda solo con las claves de técnica.
 
-   implemento: barra · disco · landmine · mancuerna · corporal
+   implemento: barra · disco · landmine · mancuerna · banda · corporal
+               ("banda" ya resuelve en equipo.js; sin ejercicios propios
+               todavía porque no hay elásticos en casa)
    factorPeso: solo en los corporales, qué parte de tu peso mueves
                de verdad (para contar volumen y XP con cabeza)
    unilateral: "pierna" o "lado" — las reps son de un solo miembro.
@@ -174,6 +176,17 @@ export const EJERCICIOS = {
       "Almohadilla o toalla gruesa bajo la barra en la cadera.",
       "Arriba: glúteo apretado y costillas abajo, sin arquear lumbar.",
       "Barbilla al pecho durante todo el movimiento."
+    ]
+  },
+  puente1: {
+    nombre: "Puente de glúteo a una pierna", grupo: "Piernas", patron: "Extensión de cadera",
+    implemento: "corporal", factorPeso: 0.35, unilateral: "pierna",
+    musculos: ["Glúteo mayor", "Isquiotibiales", "Core"],
+    claves: [
+      "Espalda en el suelo, un pie apoyado y la otra pierna estirada o flexionada al pecho.",
+      "Empuja con el talón, sube hasta que cadera y hombro queden alineados.",
+      "Aprieta el glúteo un segundo arriba, no arquees la lumbar para llegar más alto.",
+      "Si notas isquio antes que glúteo, acerca el pie de apoyo a la cadera."
     ]
   },
   gemelo: {

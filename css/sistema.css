@@ -320,10 +320,13 @@ body.puerta-abierta .top{display:none}
 .calienta__et{font-family:var(--mono);font-size:9.5px;color:var(--tenue);letter-spacing:.14em;
               text-transform:uppercase;margin-right:2px}
 .calienta__s{
-  font-family:var(--mono);font-size:11px;color:var(--apagado);
+  font-family:var(--mono);font-size:11px;color:var(--apagado);background:none;cursor:pointer;
   border:1px dashed var(--linea);border-radius:4px;padding:3px 7px;
+  transition:background .15s,color .15s,border-color .15s;
 }
 .calienta__s i{font-style:normal;color:var(--tenue);margin-left:3px}
+.calienta__s.on{background:var(--exito);border-style:solid;border-color:var(--exito);color:var(--sobreExito);font-weight:600}
+.calienta__s.on i{color:var(--sobreExito)}
 
 /* ---------- nombre del ejercicio como enlace a su ficha ---------- */
 .ej__link{

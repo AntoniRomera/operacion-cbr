@@ -18,6 +18,11 @@ export const DISCOS = [25, 20, 15, 10, 5, 5];
 /* Mancuernas fijas: pares completos disponibles, en kg por mano. */
 export const MANCUERNAS = [5];
 
+/* Elásticos: todavía no hay ninguno en casa. Cuando lleguen, se listan
+   aquí por su resistencia equivalente en kg y "banda" ya funciona como
+   implemento en el catálogo sin tocar nada más. */
+export const BANDAS = [];
+
 /* Colores oficiales de competición. Los usa el dibujo de la barra. */
 export const COLOR_DISCO = {
   25: { fondo: "var(--p25)", texto: "#fff",    alto: 64, ancho: 19 },
@@ -90,6 +95,7 @@ export function escalonDe(implemento) {
     case "landmine":  return CARGAS_SUELTAS;
     case "disco":     return DISCOS_SUELTOS;
     case "mancuerna": return MANCUERNAS;
+    case "banda":     return BANDAS;
     default:          return [0];          // peso corporal
   }
 }

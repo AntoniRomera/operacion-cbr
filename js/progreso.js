@@ -171,13 +171,14 @@ export function atributos(st, r = { actual: 0 }) {
  * Contexto que reciben las condiciones de los logros.
  * `ultima` solo llega justo después de terminar una sesión.
  */
-export function contexto({ estado, filas, ultima = null }) {
+export function contexto({ estado, filas, ultima = null, diasNucleo = 3 }) {
   const st = estadisticas(filas);
   const diasSemana = new Set(filas.filter(f => f.semana === estado.semana).map(f => f.dia));
   return {
     ...st,
     semana: estado.semana,
     diasEstaSemana: diasSemana.size,
+    diasNucleo,
     tecnicasVistas: (estado.tecnicas || []).length,
     racha: racha(filas),
     ultima

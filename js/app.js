@@ -5,7 +5,7 @@
    texto y un único manejador de clics delegado en el documento.
    ============================================================ */
 
-import { RUTINA, NUCLEO, bloques, dia as diaRutina } from "../datos/rutina.js";
+import { PROGRAMAS, PROGRAMA_DEFECTO, nucleo, bloques, dia as diaRutina, totalSeries } from "../datos/rutina.js";
 import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
@@ -77,6 +77,9 @@ function estimaMinutos(lista) {
   return Math.max(5, Math.round(seg / 300) * 5);
 }
 
+/** El programa que sigue el cazador, con el de defecto como red de seguridad. */
+const programaActivo = () => PROGRAMAS[E?.programa] || PROGRAMAS[PROGRAMA_DEFECTO];
+
 /**
  * El día de la rutina con las sustituciones del cazador aplicadas.
  * Se cambia el movimiento, no la prescripción: las series, el rango de
@@ -84,7 +87,7 @@ function estimaMinutos(lista) {
  * se meta en él.
  */
 function dia(n) {
-  const d = diaRutina(n);
+  const d = diaRutina(programaActivo(), n);
   return {
     ...d,
     ejercicios: d.ejercicios.map(e => {
@@ -340,17 +343,18 @@ function estadoDia(n) {
 
 function pintarMisiones() {
   stopAnim();
-  const estados = RUTINA.dias.map(d => estadoDia(d.n));
-  const nucleo = estados.filter(e => !e.dia.suelto);
+  const prog = programaActivo();
+  const estados = prog.dias.map(d => estadoDia(d.n));
+  const nucleoDias = estados.filter(e => !e.dia.suelto);
   const diaInicio = E.diaInicio || 1;
-  const nNucleo = NUCLEO.length;
-  const nucleoOrdenado = [...nucleo].sort((a, b) =>
+  const nNucleo = nucleo(prog).length;
+  const nucleoOrdenado = [...nucleoDias].sort((a, b) =>
     (a.dia.n - diaInicio + nNucleo) % nNucleo - (b.dia.n - diaInicio + nNucleo) % nNucleo
   );
   const pendiente = nucleoOrdenado.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
   const restantes = estados.filter(e => e.dia.n !== pendiente.dia.n);
-  const hechas = nucleo.filter(e => e.hecha).length;
-  const semanaHecha = hechas === nucleo.length;
+  const hechas = nucleoDias.filter(e => e.hecha).length;
+  const semanaHecha = hechas === nucleoDias.length;
 
   const tarjeta = (e, destacada) => {
     const clases = ["tarjeta"];
@@ -389,17 +393,17 @@ function pintarMisiones() {
       <div class="portada__cab">Semana ${E.semana}</div>
       <h2 class="portada__tit">${semanaHecha ? "Semana completada" : "Misiones diarias"}</h2>
       <div class="portada__prog">
-        <span class="portada__puntos">${nucleo.map(e =>
+        <span class="portada__puntos">${nucleoDias.map(e =>
           `<i class="${e.hecha ? "on" : ""}"></i>`).join("")}</span>
-        <span class="portada__txt">${hechas} de ${nucleo.length}${remate
+        <span class="portada__txt">${hechas} de ${nucleoDias.length}${remate
           ? ` · remate ${remate.bloquesHechos}/${remate.grupos.length}` : ""}</span>
         ${r.actual ? `<span class="racha ${r.enRiesgo ? "racha--riesgo" : ""}">Racha ${r.actual}</span>` : ""}
       </div>
       ${r.enRiesgo ? `<div class="portada__riesgo">
         ${r.margen === 0 ? "Hoy es el último día para mantener la racha"
                          : `Queda ${r.margen} día para mantener la racha`}</div>` : ""}
-      <div class="portada__pie">${NUCLEO.length} días sostienen la semana ·
-        descanso ${esc(RUTINA.descansos.toLowerCase())}</div>
+      <div class="portada__pie">${nNucleo} días sostienen la semana ·
+        descanso ${esc(prog.descansos.toLowerCase())}</div>
     </div>
     ${copiaHTML(st)}
     <div class="tablero">
@@ -502,10 +506,11 @@ function pintarDia() {
   const total = vivos.reduce((a, e) => a + e.series, 0);
   const hechas = vivos.reduce((a, e) => a + serie(e).hechas.filter(Boolean).length, 0);
 
-  const estados = RUTINA.dias.map(x => estadoDia(x.n));
+  const prog = programaActivo();
+  const estados = prog.dias.map(x => estadoDia(x.n));
 
   let html = `<div class="saltos">
-      ${RUTINA.dias.map((x, i) => `<button class="salto ${estados[i].hecha ? "hecha" : ""} ${x.suelto ? "salto--suelto" : ""}"
+      ${prog.dias.map((x, i) => `<button class="salto ${estados[i].hecha ? "hecha" : ""} ${x.suelto ? "salto--suelto" : ""}"
         data-dia="${x.n}" aria-current="${x.n === diaActivo}" aria-label="Día ${x.n}, ${esc(x.cuando)}">${x.n}</button>`).join("")}
       <span class="saltos__hoy">${esc(d.cuando)}</span>
     </div>
@@ -517,6 +522,13 @@ function pintarDia() {
         d.suelto && vivos.length < d.ejercicios.length ? "por hacer" : ""} · ${hechas}/${total} series</div>
       <div class="medidor">${vivos.map(e => `<i class="${serie(e).hechas.filter(Boolean).length === e.series ? "on" : ""}"></i>`).join("")}</div>
     </div>`;
+
+  if (d.calentamiento?.length) {
+    html += `<div class="vt vt--calienta">
+        <div class="vt__cab">Calentamiento</div>
+        <ul class="claves">${d.calentamiento.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+      </div>`;
+  }
 
   if (d.suelto) {
     html += `<div class="suelta">Bloques independientes. Haz los que te quepan y pulsa
@@ -572,10 +584,12 @@ function pintarDia() {
       /* Entrar en frío a una barra cargada es como se rompe la gente.
          Los escalones salen de los discos que tienes, no de porcentajes. */
       if (ej.implemento === "barra" && kg > equipo.BARRA.kg + 10) {
+        const rampa = equipo.aproximacion(kg);
+        if (!Array.isArray(st.aprox) || st.aprox.length !== rampa.length) st.aprox = Array(rampa.length).fill(false);
         html += `<div class="calienta">
             <span class="calienta__et">Aproximación</span>
-            ${equipo.aproximacion(kg).map(s =>
-              `<span class="calienta__s">${s.kg}<i>×${s.reps}</i></span>`).join("")}
+            ${rampa.map((s, k) =>
+              `<button class="calienta__s ${st.aprox[k] ? "on" : ""}" data-aprox="${ej.sesionId}" data-ak="${k}">${s.kg}<i>×${s.reps}</i></button>`).join("")}
           </div>`;
       }
       html += `</div>`;
@@ -1002,6 +1016,16 @@ function pintarPerfil() {
     </div>
 
     <div class="vt">
+      <div class="vt__cab">Programa</div>
+      <div class="arsenal">${Object.values(PROGRAMAS).map(p => `
+        <button class="arma ${p.id === programaActivo().id ? "" : "arma--nueva"}" data-programa="${p.id}">
+          <span class="arma__nom">${esc(p.nombre)}</span>
+          <span class="arma__meta">${p.dias.length} días · ${totalSeries(p)} series/semana</span>
+        </button>`).join("")}</div>
+      <p class="vt__pie">${esc(programaActivo().resumen)}</p>
+    </div>
+
+    <div class="vt">
       <div class="vt__cab">Inventario</div>
       <p class="vt__txt">${equipo.BARRA.nombre} de ${equipo.BARRA.kg} kg y discos de ${equipo.DISCOS.join(", ")} kg.
       Salen <b>${equipo.CARGAS_BARRA.length} cargas</b> distintas, de ${equipo.CARGAS_BARRA[0].total} a ${equipo.TOPE_BARRA} kg.</p>
@@ -1069,34 +1093,39 @@ function pintarManual() {
     </div>
 
     <h2>La semana</h2>
+    <p class="vt__pie">Programa activo: <b>${esc(programaActivo().nombre)}</b>. Se cambia
+    desde la ficha de cazador.</p>
     <table class="tabla">
       <tr><th>Día</th><th>Misión</th><th>Qué toca</th></tr>
-      ${RUTINA.dias.map(d => `<tr><td>${esc(d.cuando)}</td>
+      ${programaActivo().dias.map(d => `<tr><td>${esc(d.cuando)}</td>
         <td>${esc(d.nombre)}${d.suelto ? " · suelta" : ""}</td><td>${esc(d.trabaja)}</td></tr>`).join("")}
-      <tr><td>Miércoles</td><td>Descanso</td><td>Corta la semana por la mitad</td></tr>
-      <tr><td>Sáb y dom</td><td>Descanso</td><td>Aquí se crece, no en el garaje</td></tr>
+      <tr><td colspan="3">Descanso: ${esc(programaActivo().descansos)}</td></tr>
     </table>
-    <p>Dos días seguidos y uno libre, otros dos y el fin de semana entero. Nunca hay dos
-    sesiones seguidas que carguen lo mismo: el lunes empujas, el martes tiras, el jueves
-    la pierna descansada y el viernes solo queda el remate. El peso muerto pesado cae en
-    martes y el rumano en jueves, con un día de por medio, para no machacar la lumbar dos
-    veces sin recuperar.</p>
+    <p>Cada patrón (empuje, tirón, pierna) cubre el cuerpo entero, hombro pequeño, brazo
+    y cadera incluidos: no hace falta un cuarto día suelto para completarlo. El programa
+    de 6 días repite los mismos tres patrones dos veces por semana. El peso muerto pesado
+    va siempre en el día de tirón y el rumano en el de pierna, así que nunca caen en el
+    mismo día ni la lumbar carga dos veces seguidas sin haber tocado antes otro patrón.</p>
 
-    <h2>Las semanas de tres días</h2>
-    <p>Trabajar, estudiar y tener vida no siempre deja cuatro huecos. Por eso <strong>los
-    tres primeros días cubren el cuerpo entero</strong>: si solo salen tres, no te falta ni
-    un grupo grande. El cuarto es el que sobra cuando la semana viene mal.</p>
-    <ul>
-      <li><strong>Cae siempre el día 4</strong>, nunca uno de los tres primeros.</li>
-      <li>Si caen dos, corre los días: entrenas lunes, miércoles y viernes y ya está. Lo
-      que no se toca es el orden — empuje, tirón, pierna.</li>
-      <li>El día 4 va en <strong>tres bloques sueltos</strong> de unos doce minutos. Puedes
-      pegar uno al final de otra sesión, hacerlo un sábado por la mañana o partirlo en tres
-      ratos. Al pulsar Arise se guarda lo hecho y la próxima vez solo te sale lo que falta.</li>
-    </ul>
-    <div class="alerta"><p>No recuperes una sesión perdida metiéndola en el día de descanso
-    del miércoles. Ese día está ahí a propósito: sin él, cuatro sesiones en cuatro días
-    seguidos se acumulan y a las tres semanas se te caen las reps en todo.</p></div>
+    <h2>Elegir programa</h2>
+    <p>Por defecto sigues el <strong>PPL de 3 días</strong>: empuje, tirón y pierna, una vez
+    por semana, con hueco de sobra para trabajo, estudios y vida. Si hay más tiempo y ganas
+    de volumen, cambia a <strong>PPL x2 de 6 días</strong> desde la ficha de cazador: los
+    mismos tres patrones, dos veces por semana. Cambiar de programa no borra historial ni
+    pesos guardados — solo cambia qué días salen y cuántos hay.</p>
+    <div class="alerta"><p>No recuperes una sesión perdida metiéndola en el día de descanso.
+    Está ahí a propósito: sin él, las sesiones seguidas se acumulan y a las tres semanas se
+    te caen las reps en todo.</p></div>
+
+    <h2>Calentamiento y aproximación</h2>
+    <p>Antes del primer ejercicio de cada día hay un bloque de <strong>calentamiento
+    general</strong>: cardio suave y movilidad del patrón de ese día. No se marca, es la
+    entrada en calor antes de cargar la barra.</p>
+    <p>Si el peso de trabajo pide más de 10 kg sobre la barra vacía, debajo del selector de
+    peso sale la <strong>rampa de aproximación</strong>: series con menos peso y más reps
+    para llegar fresco a la serie de trabajo. Se marcan igual que las series normales, pero
+    no cuentan como ninguna de las series efectivas ni activan <em>Sube el peso</em> — son
+    calentamiento, no trabajo.</p>
 
     <h2>Cómo elegir el peso</h2>
     <p>Cada serie termina con <strong>2–3 reps en recámara</strong>. Si acabas y podrías hacer cinco más, es calentamiento. Si fallas antes de llegar al rango, has puesto demasiado. Ajusta el mismo día, no la semana siguiente.</p>
@@ -1262,7 +1291,7 @@ function repintarQuieto() {
 
 /* ---------- logros ---------- */
 async function revisarLogros(ultima = null) {
-  const ctx = P.contexto({ estado: E, filas, ultima });
+  const ctx = P.contexto({ estado: E, filas, ultima, diasNucleo: nucleo(programaActivo()).length });
   const nuevos = P.evaluar(ctx, desbloqueados);
   for (const l of nuevos) {
     desbloqueados.push(l.id);
@@ -1562,6 +1591,16 @@ document.addEventListener("click", async e => {
     return;
   }
 
+  /* --- marcar serie de aproximación (calentamiento, no cuenta como trabajo) --- */
+  if (b.dataset.aprox) {
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.aprox);
+    const st = serie(ej), k = +b.dataset.ak;
+    st.aprox[k] = !st.aprox[k];
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+
   /* --- marcar serie --- */
   if (b.dataset.serie) {
     const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.serie);
@@ -1626,14 +1665,27 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.id === "semana") {
-    const diasNucleo = filas.filter(f => f.semana === E.semana && NUCLEO.includes(f.dia));
+    const nucleoActivo = nucleo(programaActivo());
+    const diasNucleo = filas.filter(f => f.semana === E.semana && nucleoActivo.includes(f.dia));
     const ultimo = diasNucleo.length ? Math.max(...diasNucleo.map(f => f.dia)) : 0;
-    E.diaInicio = ultimo ? (ultimo % NUCLEO.length) + 1 : 1;
+    E.diaInicio = ultimo ? (ultimo % nucleoActivo.length) + 1 : 1;
     diaActivo = E.diaInicio;
     E.semana++;
     await guardar(); await revisarLogros(); pintar(); aviso("Semana " + E.semana); return;
   }
   if (b.id === "cambiarFicha") { abrirSelector(); return; }
+
+  if (b.dataset.programa) {
+    if (b.dataset.programa !== E.programa) {
+      E.programa = b.dataset.programa;
+      diaActivo = 1;
+      E.diaInicio = 1;
+      await guardar();
+      aviso(`Programa: ${programaActivo().nombre}`);
+    }
+    pintar();
+    return;
+  }
 
   if (b.id === "expCsv") {
     if (!filas.length) { aviso("Todavía no hay sesiones guardadas"); return; }
