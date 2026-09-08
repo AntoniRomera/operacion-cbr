@@ -6,7 +6,7 @@
    Sube VERSION al tocar cualquier fichero de la lista y se limpia
    la caché vieja al activarse.
    ============================================================ */
-const VERSION = "sistema-v22";
+const VERSION = "sistema-v23";
 const SHELL = [
   "./",
   "index.html",
@@ -21,6 +21,7 @@ const SHELL = [
   "datos/rutina.js",
   "datos/figuras.js",
   "datos/logros.js",
+  "datos/movilidad.js",
   "icons/icon-192-v2.png",
   "icons/icon-512-v2.png",
   "icons/icon-maskable-512-v2.png",

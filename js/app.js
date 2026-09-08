@@ -7,6 +7,7 @@
 
 import { PROGRAMAS, PROGRAMA_DEFECTO, nucleo, bloques, dia as diaRutina, totalSeries } from "../datos/rutina.js";
 import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
+import { MOVILIDAD, XP_MOVILIDAD, esSemanaMovilidad } from "../datos/movilidad.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
 import * as DB from "./db.js";
@@ -358,7 +359,7 @@ const ICONOS = {
 const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", perfil: "Perfil", manual: "Manual" };
 
 function pintarNav() {
-  const activa = vista === "dia" ? "misiones" : vista;
+  const activa = vista === "dia" || vista === "movilidad" ? "misiones" : vista;
   $("nav").innerHTML = Object.keys(ICONOS).map(v => `
     <button class="nav__b" data-vista="${v}" aria-current="${activa === v}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -426,8 +427,87 @@ function bloqueAtrasado(prog) {
   return [...cuenta.entries()].sort((a, b) => a[1] - b[1])[0][0];
 }
 
+/** ¿Ya se cerró la sesión de movilidad de esta semana? */
+const movilidadHecha = () => filas.some(f => f.dia === 0 && f.semana === E.semana);
+
+function pintarMovilidadPortada() {
+  const r = P.racha(filas);
+  const hecha = movilidadHecha();
+  $("app").innerHTML = `
+    ${penalizacionHTML(r)}
+    <div class="portada">
+      <div class="portada__cab">Semana ${E.semana} · descarga</div>
+      <h2 class="portada__tit">${hecha ? "Movilidad completada" : "Semana de movilidad"}</h2>
+      <div class="portada__prog">
+        <span class="portada__puntos"><i class="${hecha ? "on" : ""}"></i></span>
+        <span class="portada__txt">${hecha ? "1 de 1" : "0 de 1"}</span>
+        ${r.actual ? `<span class="racha ${r.enRiesgo ? "racha--riesgo" : ""}">Racha ${r.actual}</span>` : ""}
+      </div>
+      ${r.enRiesgo ? `<div class="portada__riesgo">
+        ${r.margen === 0 ? "Hoy es el último día para mantener la racha"
+                         : `Queda ${r.margen} día para mantener la racha`}</div>` : ""}
+      <div class="portada__pie">Cada 4 semanas de carga, una de descarga: sin barra, sin discos —
+        cadera, dorsal, tobillo, torácica y hombro por tiempo.</div>
+    </div>
+    <div class="tablero">
+      <button class="tarjeta tarjeta--destacada ${hecha ? "tarjeta--hecha" : ""}" data-mision="0">
+        <span class="tarjeta__n">✚</span>
+        <span class="tarjeta__eti">${hecha ? "Hecha" : "Siguiente misión"}</span>
+        <h3 class="tarjeta__nom">Movilidad</h3>
+        <span class="tarjeta__lema">Recarga antes de la siguiente carga</span>
+        <span class="tarjeta__pie">${hecha ? "Completada" : `${MOVILIDAD.length} posturas · sin cargas`}</span>
+      </button>
+    </div>
+    ${hecha ? `<div class="acciones">
+      <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
+    </div>` : ""}`;
+}
+
+function pintarMovilidad() {
+  stopAnim();
+  const sesion = E.sesion.movilidad || (E.sesion.movilidad = {});
+  const bloques_ = MOVILIDAD.map(b => ({ ...b, hecho: !!sesion[b.clave] }));
+  const hechos = bloques_.filter(b => b.hecho).length;
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">Semana ${E.semana} · descarga</div>
+      <h2 class="mision__tit">Movilidad</h2>
+      <div class="mision__lema">${hechos} de ${bloques_.length} posturas · sin cargas</div>
+    </div>
+    <div class="suelta">Mantén cada postura el tiempo indicado, sin dolor agudo. No hay peso que subir
+      esta semana: el objetivo es rango de movimiento, no esfuerzo.</div>
+    ${bloques_.map(b => `
+      <section class="ej">
+        <div class="ej__cab">
+          <div class="ej__txt">
+            <h3 class="ej__nom">${esc(b.nombre)}</h3>
+            <div class="ej__meta">${b.segundos} s${b.unilateral ? ` por ${b.unilateral} <em>(los dos lados)</em>` : ""}</div>
+            <div class="ej__musc">${b.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
+          </div>
+        </div>
+        <div class="tecnica"><div id="lienzo-${b.clave}"></div>
+          <ul class="claves">${b.claves.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+        </div>
+        <div class="series">
+          <button class="serie ${b.hecho ? "ok" : ""}" style="flex:1" data-movbloque="${b.clave}">
+            ${b.hecho ? "✓ Hecha" : `Marcar · ${b.segundos} s`}
+          </button>
+        </div>
+      </section>`).join("")}
+    <div class="acciones">
+      <button class="btn btn--arise" id="terminarMovilidad">Arise · cerrar movilidad</button>
+    </div>`;
+
+  for (const b of bloques_) {
+    const host = $("lienzo-" + b.clave);
+    if (host) { const fig = buildFigure(b.figura); host.append(fig.svg); animate(fig); }
+  }
+}
+
 function pintarMisiones() {
   stopAnim();
+  if (esSemanaMovilidad(E.semana)) { pintarMovilidadPortada(); return; }
   const prog = programaActivo();
   const estados = prog.dias.map(d => estadoDia(d.n));
   const nucleoDias = estados.filter(e => !e.dia.suelto);
@@ -1323,6 +1403,7 @@ function pintar() {
   else if (vista === "perfil") pintarPerfil();
   else if (vista === "manual") pintarManual();
   else if (vista === "ejercicio") pintarEjercicio();
+  else if (vista === "movilidad") pintarMovilidad();
   else if (vista === "dia") pintarDia();
   else pintarMisiones();
 }
@@ -1414,8 +1495,8 @@ function repintarQuieto() {
 }
 
 /* ---------- logros ---------- */
-async function revisarLogros(ultima = null) {
-  const ctx = P.contexto({ estado: E, filas, ultima, diasNucleo: nucleo(programaActivo()).length });
+async function revisarLogros(ultima = null, diasNucleo = nucleo(programaActivo()).length) {
+  const ctx = P.contexto({ estado: E, filas, ultima, diasNucleo });
   const nuevos = P.evaluar(ctx, desbloqueados);
   for (const l of nuevos) {
     desbloqueados.push(l.id);
@@ -1433,6 +1514,63 @@ async function terminarSesion() {
   if (cerrando) return;
   cerrando = true;
   try { await cerrarSesion(); } finally { cerrando = false; }
+}
+
+/**
+ * Cierra la semana de movilidad. Una sola fila para toda la sesión:
+ * no hay volumen ni progresión que repartir por postura. El XP es
+ * fijo y solo se gana completando las cinco, no a prorrata.
+ */
+async function cerrarMovilidad() {
+  if (cerrando) return;
+  cerrando = true;
+  try {
+    const sesion = E.sesion.movilidad || {};
+    const hechos = MOVILIDAD.filter(b => sesion[b.clave]).length;
+    if (!hechos) { aviso("No has marcado ninguna postura"); return; }
+
+    const completa = hechos === MOVILIDAD.length;
+    const fecha = hoy(), ahora = new Date();
+    const nota = ($("notaSesion")?.value ?? E.nota ?? "").trim().slice(0, 280);
+    const brutos = E.iniciada ? Math.round((ahora - new Date(E.iniciada)) / 60000) : null;
+    const minutos = brutos != null && brutos > 0 && brutos <= 300 ? brutos : null;
+    const antes = P.estadisticas(filas);
+
+    const fila = {
+      cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+      semana: E.semana, dia: 0, ej: "movilidad", nombre: "Semana de movilidad",
+      implemento: "corporal", kg: 0, carga: 0, minutos, nota, lados: 1,
+      series: hechos, reps: 0, volumen: 0, xp: completa ? XP_MOVILIDAD : 0
+    };
+    await DB.historial.anadir([fila]);
+    filas.push(fila);
+    delete E.sesion.movilidad;
+    E.iniciada = null; E.nota = "";
+    mantenerPantalla(false);
+    await guardar();
+
+    const despues = P.estadisticas(filas);
+    if (despues.rango !== antes.rango) {
+      aviso(`<b>Ascenso de rango</b><span>Rango ${despues.rango}</span>`, "rango");
+    } else if (despues.nivel > antes.nivel) {
+      aviso(`<b>Subida de nivel</b><span>Nivel ${despues.nivel}</span>`, "nivel");
+    }
+
+    /* Una semana de movilidad solo tiene un "día": completarla ya es
+       la semana entera, para los logros que miran días distintos. */
+    const nuevos = await revisarLogros({
+      dia: 0, volumen: 0, series: hechos, subidas: 0, completa,
+      hora: ahora.getHours(), diasParado: 0, minutos, records: 0
+    }, completa ? 1 : nucleo(programaActivo()).length);
+
+    vista = "misiones";
+    pintar(); arriba();
+    if (!nuevos.length) {
+      aviso(completa
+        ? `<b>Movilidad completada</b><span>+${miles(XP_MOVILIDAD)} XP</span>`
+        : "Progreso guardado", "exito");
+    }
+  } finally { cerrando = false; }
 }
 
 async function cerrarSesion() {
@@ -1641,7 +1779,8 @@ document.addEventListener("click", async e => {
   /* --- navegación --- */
   if (b.dataset.mision || b.dataset.dia) {
     diaActivo = +(b.dataset.mision || b.dataset.dia);
-    vista = "dia"; tecnicaAbierta = null;
+    vista = esSemanaMovilidad(E.semana) ? "movilidad" : "dia";
+    tecnicaAbierta = null;
     pintar(); arriba();
     return;
   }
@@ -1790,6 +1929,20 @@ document.addEventListener("click", async e => {
 
   /* --- acciones --- */
   if (b.id === "terminar") { await terminarSesion(); return; }
+  if (b.id === "terminarMovilidad") { await cerrarMovilidad(); return; }
+
+  if (b.dataset.movbloque) {
+    const sesion = E.sesion.movilidad || (E.sesion.movilidad = {});
+    const clave = b.dataset.movbloque;
+    sesion[clave] = !sesion[clave];
+    if (sesion[clave] && !E.iniciada) {
+      E.iniciada = new Date().toISOString();
+      mantenerPantalla(true);
+    }
+    await guardar();
+    repintarQuieto();
+    return;
+  }
   if (b.id === "vaciar") {
     dia(diaActivo).ejercicios.forEach(ej => delete E.sesion[ej.sesionId]);
     E.iniciada = null;
