@@ -1101,7 +1101,7 @@ function pintarPerfil() {
         Si borras el icono de la pantalla de inicio o limpias Safari, se va todo.</p>
       <div class="acciones">
         <button class="btn" id="expJson">Descargar copia de seguridad</button>
-        <button class="btn" id="impJson">Restaurar copia</button>
+        <button class="btn" id="impJson">Añadir copia</button>
         <button class="btn" id="expCsv">Exportar historial (CSV)</button>
         <button class="btn" id="semana">Empezar semana ${E.semana + 1}</button>
         <button class="btn btn--fantasma" id="cambiarFicha">Cambiar de cazador</button>
@@ -1799,14 +1799,21 @@ document.addEventListener("change", async e => {
   if (e.target.id !== "ficheroCopia") return;
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
-  if (!confirm(`Esto reemplaza los datos de ${cazador.nombre} en este móvil. ¿Seguimos?`)) return;
+  if (!confirm(`Esto añade los datos del fichero al historial de ${cazador.nombre} en este móvil. ¿Seguimos?`)) return;
   try {
-    const n = await DB.copia.importar(cazador.id, JSON.parse(await file.text()));
+    const datos = JSON.parse(await file.text());
+    const posibles = await DB.copia.contarDuplicados(cazador.id, datos);
+    const incluirDuplicados = posibles === 0 || confirm(
+      `${posibles} serie${posibles > 1 ? "s" : ""} del fichero parece${posibles > 1 ? "n" : ""} ya estar en el ` +
+      `historial (mismo día, ejercicio, peso, series y reps, a menos de 15 min). ¿Las añado también? Cancelar las omite.`
+    );
+    const r = await DB.copia.importar(cazador.id, datos, { incluirDuplicados });
+    const anadidas = typeof r === "number" ? r : r.anadidas;
     E = await DB.estado.cargar(cazador.id);
     filas = await DB.historial.lista(cazador.id);
     desbloqueados = (await DB.logros.lista(cazador.id)).map(l => l.logro);
     pintar();
-    aviso(`Restaurado · ${n} series`);
+    aviso(`Añadido · ${anadidas} series${posibles && !incluirDuplicados ? ` · ${posibles} duplicadas omitidas` : ""}`);
   } catch (err) { aviso(err.message || "No se pudo leer el archivo"); }
 });
 
