@@ -404,6 +404,28 @@ function estadoDia(n) {
   };
 }
 
+/**
+ * Nombre del bloque (Empuje/Tirón/Piernas...) que más se ha caído en
+ * las últimas tres semanas de calendario, o null si van parejos. Un
+ * día vale por la sesión en la que se cerró, no por sus filas.
+ */
+function bloqueAtrasado(prog) {
+  const semanas = new Set([E.semana, E.semana - 1, E.semana - 2].filter(s => s >= 1));
+  const sesiones = new Set();
+  for (const f of filas) if (semanas.has(f.semana)) sesiones.add(`${f.semana}|${f.dia}`);
+
+  const cuenta = new Map(prog.dias.map(d => [d.nombre, 0]));
+  for (const clave of sesiones) {
+    const diaN = +clave.split("|")[1];
+    const d = prog.dias.find(x => x.n === diaN);
+    if (d) cuenta.set(d.nombre, (cuenta.get(d.nombre) || 0) + 1);
+  }
+
+  const valores = [...cuenta.values()];
+  if (!valores.length || Math.max(...valores) === Math.min(...valores)) return null;
+  return [...cuenta.entries()].sort((a, b) => a[1] - b[1])[0][0];
+}
+
 function pintarMisiones() {
   stopAnim();
   const prog = programaActivo();
@@ -414,7 +436,9 @@ function pintarMisiones() {
   const nucleoOrdenado = [...nucleoDias].sort((a, b) =>
     (a.dia.n - diaInicio + nNucleo) % nNucleo - (b.dia.n - diaInicio + nNucleo) % nNucleo
   );
-  const pendiente = nucleoOrdenado.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
+  const atrasado = bloqueAtrasado(prog);
+  const pendienteAtrasado = atrasado && nucleoOrdenado.find(e => !e.hecha && e.dia.nombre === atrasado);
+  const pendiente = pendienteAtrasado || nucleoOrdenado.find(e => !e.hecha) || estados.find(e => !e.hecha) || estados[0];
   const restantes = estados.filter(e => e.dia.n !== pendiente.dia.n);
   const hechas = nucleoDias.filter(e => e.hecha).length;
   const semanaHecha = hechas === nucleoDias.length;
@@ -436,7 +460,7 @@ function pintarMisiones() {
     const via = e.dia.suelto ? e.cerrados / e.dia.ejercicios.length : e.marcadas / e.total;
     return `<button class="${clases.join(" ")}" data-mision="${e.dia.n}">
         <span class="tarjeta__n">${e.dia.n}</span>
-        ${destacada ? `<span class="tarjeta__eti">Siguiente misión</span>`
+        ${destacada ? `<span class="tarjeta__eti">${pendienteAtrasado ? "Grupo atrasado" : "Siguiente misión"}</span>`
                     : `<span class="tarjeta__cuando">${esc(e.dia.cuando)}</span>`}
         <h3 class="tarjeta__nom">${esc(e.dia.nombre)}</h3>
         <span class="tarjeta__lema">${esc(e.dia.lema)}</span>
