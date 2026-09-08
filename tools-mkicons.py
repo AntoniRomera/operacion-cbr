@@ -6,17 +6,16 @@ Se dibuja con funciones de distancia (SDF), no con píxeles sueltos:
 así los bordes salen suaves y el brillo azul del Sistema se calcula
 como una caída exponencial alrededor de cada figura.
 
-Motivo: una ventana del Sistema — cuatro esquinas marcadas — con la
-barra olímpica dentro. Es el mismo lenguaje visual que la app.
+Motivo: una ventana del Sistema — cuatro esquinas marcadas — con el
+rombo del logo dentro. Mismo trazo que datos/insignias.js: monocromo
+de verdad, un solo color, nada de acero ni violeta encima.
 """
 import math, os, struct, zlib
 
 SALIDA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
 
-FONDO   = (0x08, 0x0B, 0x11)
-CIAN    = (0x38, 0xBD, 0xF8)
-VIOLETA = (0xA7, 0x8B, 0xFA)
-ACERO   = (0xD5, 0xE2, 0xF2)
+FONDO = (0x08, 0x0B, 0x11)
+CIAN  = (0x38, 0xBD, 0xF8)
 
 MUESTRAS = 3          # supermuestreo por eje
 
@@ -44,6 +43,13 @@ def figuras(escala):
         centro, medio, r = (e(cx), e(cy)), (largo(mx), largo(my)), largo(radio)
         fs.append((lambda p: sdf_rect(p, centro, medio, r), color, brillo))
 
+    def diamante(cx, cy, radio, color, brillo):
+        """Rombo (distancia en norma-1): mismo signo que sdf_rect, negativo dentro."""
+        centro, r = (e(cx), e(cy)), largo(radio)
+        def sdf(p):
+            return abs(p[0] - centro[0]) + abs(p[1] - centro[1]) - r
+        fs.append((sdf, color, brillo))
+
     fs = []
 
     # --- cuatro esquinas de la ventana ---
@@ -58,11 +64,8 @@ def figuras(escala):
             barra(x - sx * desplaza, y, brazo / 2, grosor / 2, 0.012, CIAN, 1.0)
             barra(x, y - sy * desplaza, grosor / 2, brazo / 2, 0.012, CIAN, 1.0)
 
-    # --- barra olímpica dentro de la ventana ---
-    barra(0.5, 0.5, 0.262, 0.024, 0.012, ACERO, 0.35)
-    for sx in (-1, 1):
-        barra(0.5 + sx * 0.162, 0.5, 0.028, 0.112, 0.013, CIAN, 1.2)
-        barra(0.5 + sx * 0.234, 0.5, 0.022, 0.078, 0.010, VIOLETA, 1.2)
+    # --- rombo del logo, al centro ---
+    diamante(0.5, 0.5, 0.20, CIAN, 1.2)
     return fs
 
 
@@ -126,7 +129,7 @@ def png(ruta, tam, escala=1.0):
 # puede servirte el de antes. Cambiar de nombre es lo único que lo obliga a
 # bajarlo de nuevo, así que al rediseñar el icono se sube este sufijo y se
 # actualizan index.html, manifest.webmanifest y sw.js.
-SUFIJO = "-v2"
+SUFIJO = "-v3"
 
 if __name__ == "__main__":
     os.makedirs(SALIDA, exist_ok=True)

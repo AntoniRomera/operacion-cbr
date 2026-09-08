@@ -163,6 +163,32 @@ body.puerta-abierta .top{display:none}
 }
 .rango--mini{width:24px;height:24px;font-size:13px;border-radius:6px;box-shadow:none}
 
+/* ---------- resultado de sesión ---------- */
+.resultado{padding:6px 14px 18px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.resultado__insignia{position:relative;display:flex;margin-top:6px}
+.resultado__rango{
+  position:absolute;bottom:2px;right:-4px;width:34px;height:34px;display:grid;place-items:center;
+  font-family:var(--display);font-size:18px;font-weight:700;color:var(--rango);
+  border:1.5px solid var(--rango);border-radius:9px;background:var(--fondo);
+  box-shadow:0 0 14px color-mix(in srgb, var(--rango) 35%, transparent);
+}
+.resultado__lema{font-style:italic;color:var(--apagado);font-size:13px;margin-top:8px}
+.resultado .atributos{width:100%;padding-top:20px}
+.resultado__hito{
+  margin-top:16px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--sis);
+}
+.resultado__lista{
+  list-style:none;margin:20px 0 0;padding:0;width:100%;border-top:1px solid var(--linea);
+}
+.resultado__lista li{
+  display:flex;justify-content:space-between;gap:10px;padding:9px 2px;font-size:12.5px;
+  border-bottom:1px solid var(--linea);color:var(--tinta);text-align:left;
+}
+.resultado__lista li span:last-child{font-family:var(--mono);color:var(--apagado);white-space:nowrap}
+.resultado__lista li.resultado__fallo span:last-child{color:var(--peligro)}
+.resultado .acciones{width:100%;margin-top:22px}
+
 .xp{height:3px;background:var(--panel2);margin:0 14px;border-radius:2px;overflow:hidden}
 .xp i{display:block;height:100%;background:linear-gradient(90deg,var(--sis),var(--sis2));
       box-shadow:0 0 10px var(--sis);transition:width .4s ease}
@@ -383,6 +409,8 @@ body.puerta-abierta .top{display:none}
 .vt__txt{margin:0 0 12px;color:#BFCEE0}
 .vt__pie{margin:12px 0 0;font-size:12px;color:var(--tenue);line-height:1.45}
 .vt--grande{padding:22px 18px}
+.vt__logo{margin-bottom:14px;filter:drop-shadow(0 0 8px rgba(56,189,248,calc(.45 * var(--resplandor))))}
+.top__logo{display:flex;flex:0 0 auto;opacity:.8}
 
 /* ---------- puerta de acceso ---------- */
 .puerta{min-height:100%;display:grid;place-items:center;padding:20px 4px calc(20px + env(safe-area-inset-bottom))}

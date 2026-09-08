@@ -1,6 +1,6 @@
 # 002 — Migración v:3: inventario real, progresión, movilidad y tarjeta
 
-**Estado:** borrador
+**Estado:** implementada
 **Fecha:** 2026-09-08     **Autor:** Toni + Claude
 
 ## Problema
@@ -46,19 +46,19 @@ sigue leyendo `v:2` (y el rescate `operacion-cbr` antiguo) sin cambios.
 
 ## Criterios de aceptación
 
-- [ ] Tras cada commit, importar una copia `v:2` real (exportada hoy antes
+- [x] Tras cada commit, importar una copia `v:2` real (exportada hoy antes
       de tocar nada) sigue funcionando sin error y sin perder series.
-- [ ] `equipo.escalonDe("mancuerna")` nunca aparece en la propuesta de
+- [x] `equipo.escalonDe("mancuerna")` nunca aparece en la propuesta de
       subida de peso del motor de progresión (solo reps).
-- [ ] Un ejercicio con 0 reps registradas queda con `fallado:true` y suma
-      20 XP, visible en el historial.
-- [ ] La semana de movilidad aparece en el calendario desde que se genera
-      el ciclo, no se decide en tiempo de ejecución, y fallar 2+ sesiones
-      de una semana de carga no la adelanta.
-- [ ] La tarjeta PNG se genera y descarga (o comparte) tras cerrar sesión,
+- [x] Un ejercicio con 0 reps registradas queda con `fallado:true` y suma
+      0 XP siempre, sin excepción, visible en el historial.
+- [x] La semana de movilidad aparece en el calendario desde que se genera
+      el ciclo (semana % 5 === 0, fijo), no se decide en tiempo de
+      ejecución, y fallar 2+ sesiones de una semana de carga no la adelanta.
+- [x] La tarjeta PNG se genera y descarga (o comparte) tras cerrar sesión,
       con insignia, aro de rango, logo, volumen, minutos, series, XP y
       ejercicios fallados en rojo.
-- [ ] Ningún ejercicio nuevo (búlgara, suitcase, yoke, dead hang) ofrece
+- [x] Ningún ejercicio nuevo (búlgara, suitcase, yoke, dead hang) ofrece
       kettlebell o mancuerna cargable como implemento.
 
 ## Fuera de alcance
@@ -67,15 +67,22 @@ sigue leyendo `v:2` (y el rescate `operacion-cbr` antiguo) sin cambios.
 - Rediseño visual fuera de lo pedido en insignias/logo/tarjeta.
 - Programas más allá de PPL3/PPL6 (variante Upper/Lower, etc.).
 
-## Decisiones abiertas (asumo y sigo; corrígeme si no)
+## Decisiones cerradas durante la implementación
 
-- [ ] Grosor de fraccional: asumo 8 mm/disco (no viene dado); con manguito
-      útil de 410 mm y bumpers de 30 mm, el aviso de "no cabe" se calcula
-      con esos dos grosores.
-- [ ] Los bumpers ya no tienen `alto`/`ancho` distintos por peso (todos
-      450 mm de diámetro): el dibujo de la barra cambia de escala visual.
-- [ ] "3 semanas" en el aviso de grupo atrasado = 3 semanas de calendario,
-      no 3 sesiones.
+- Fraccionales: no son de acero, son bumpers FitnessTech de 50 mm de
+  diámetro exterior, con el código de color de su bumper equivalente en
+  peso (blanco 0,5 / verde 1 / amarillo 1,5 / azul 2 kg). Grosor asumido
+  8 mm/disco (no hay dato de fábrica) para el aviso de manguito lleno.
+- Mancuernas: solo el par de 5 kg. El de 8 kg se compra más adelante y no
+  se ofrece hasta que exista en `datos/equipo.js`.
+- "3 semanas" en el aviso de grupo atrasado = 3 semanas de calendario
+  (`E.semana`), no 3 sesiones.
+- Rango de sesión: reutiliza `COLOR_RANGO`/`ORDEN_RANGO` de
+  `datos/logros.js` (mismo lenguaje de color que el rango de nivel del
+  cazador), aunque es un cálculo distinto y por sesión, no acumulado.
+- Insignias y logo: aprobados primero como boceto en un Artifact
+  (lenguaje de corchetes de esquina + rombo, ya usado en los paneles de
+  la app) antes de tocar código — ver conversación del 2026-09-08.
 
 ## Cómo se despliega y cómo se deshace
 

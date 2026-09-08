@@ -6,7 +6,7 @@
    Sube VERSION al tocar cualquier fichero de la lista y se limpia
    la caché vieja al activarse.
    ============================================================ */
-const VERSION = "sistema-v24";
+const VERSION = "sistema-v25";
 const SHELL = [
   "./",
   "index.html",
@@ -22,11 +22,12 @@ const SHELL = [
   "datos/figuras.js",
   "datos/logros.js",
   "datos/movilidad.js",
-  "icons/icon-192-v2.png",
-  "icons/icon-512-v2.png",
-  "icons/icon-maskable-512-v2.png",
-  "icons/apple-touch-icon-v2.png",
-  "icons/favicon-32-v2.png"
+  "datos/insignias.js",
+  "icons/icon-192-v3.png",
+  "icons/icon-512-v3.png",
+  "icons/icon-maskable-512-v3.png",
+  "icons/apple-touch-icon-v3.png",
+  "icons/favicon-32-v3.png"
 ];
 
 self.addEventListener("install", e => {

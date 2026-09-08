@@ -8,6 +8,7 @@
 import { PROGRAMAS, PROGRAMA_DEFECTO, nucleo, bloques, dia as diaRutina, totalSeries } from "../datos/rutina.js";
 import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
 import { MOVILIDAD, XP_MOVILIDAD, esSemanaMovilidad } from "../datos/movilidad.js";
+import { LOGO, INSIGNIAS, bloqueDe, rutasSVG } from "../datos/insignias.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
 import * as DB from "./db.js";
@@ -21,6 +22,7 @@ let filas = [];              // historial ya cargado
 let desbloqueados = [];      // ids de logros conseguidos
 let vista = "puerta";        // puerta · misiones · dia · logros · perfil · manual
 let diaActivo = 1;
+let resultadoSesion = null;  // tarjeta de la última sesión cerrada
 let tecnicaAbierta = null;
 let cambioAbierto = null;        // ejercicio con el panel de cambio abierto
 let cambioTemporal = true;       // el cambio vale solo para hoy
@@ -65,6 +67,20 @@ const colorDe = v => getComputedStyle(document.documentElement).getPropertyValue
 /* ---------- utilidades ---------- */
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/** Logo del Sistema: mismo SVG en cabecera, puerta y tarjeta. */
+const logoSVG = (tam, color = "currentColor") =>
+  `<svg viewBox="${LOGO.viewBox}" width="${tam}" height="${tam}" aria-hidden="true">${rutasSVG(LOGO.rutas, LOGO.trazo, color)}</svg>`;
+
+/** Insignia de bloque con su aro de rango; el rango sale como letra al lado. */
+const insigniaSVG = (bloque, tam, colorRango) => {
+  const ins = INSIGNIAS[bloque];
+  if (!ins) return "";
+  return `<svg viewBox="0 0 200 200" width="${tam}" height="${tam}" aria-hidden="true">
+      <circle cx="100" cy="100" r="92" fill="none" stroke="${colorRango}" stroke-width="6" stroke-dasharray="14 9"/>
+      ${rutasSVG(ins.rutas, ins.trazo, "currentColor")}
+    </svg>`;
+};
 const mmss = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 const miles = n => n.toLocaleString("es-ES");
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -290,6 +306,7 @@ async function pintarPuerta() {
   $("app").innerHTML = `
     <div class="puerta">
       <div class="vt vt--grande">
+        <div class="vt__logo">${logoSVG(30, "var(--sis)")}</div>
         <div class="vt__cab">${cambiando ? "Cambio de ficha" : "Notificación"}</div>
         <h1 class="vt__tit">${cambiando ? "Cambiar<br>de cazador" : "El Sistema<br>te ha seleccionado"}</h1>
         ${cuerpo}
@@ -337,6 +354,7 @@ function pintarCabecera() {
   $("cabecera").innerHTML = `
     <div class="top__bar">
       <div class="top__id">
+        <span class="top__logo">${logoSVG(16, "var(--tenue)")}</span>
         <span class="rango" style="--rango:${COLOR_RANGO[st.rango]}">${st.rango}</span>
         <span class="top__txt">
           <b>${esc(cazador.nombre)}</b>
@@ -359,7 +377,7 @@ const ICONOS = {
 const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", perfil: "Perfil", manual: "Manual" };
 
 function pintarNav() {
-  const activa = vista === "dia" || vista === "movilidad" ? "misiones" : vista;
+  const activa = vista === "dia" || vista === "movilidad" || vista === "resultado" ? "misiones" : vista;
   $("nav").innerHTML = Object.keys(ICONOS).map(v => `
     <button class="nav__b" data-vista="${v}" aria-current="${activa === v}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -403,6 +421,18 @@ function estadoDia(n) {
     hecha: d.suelto ? d.ejercicios.every(e => ya.has(e.clave)) : ya.size > 0,
     enCurso: marcadas > 0 || (d.suelto && ya.size > 0)
   };
+}
+
+/** Volumen de cada sesión anterior de este bloque, en orden cronológico. */
+function volumenesDeBloque(bloque, prog) {
+  const propias = filas.filter(f => bloqueDe(prog.dias.find(x => x.n === f.dia)?.nombre) === bloque);
+  propias.sort((a, b) => (a.ts || a.f).localeCompare(b.ts || b.f));
+  const mapa = new Map();
+  for (const f of propias) {
+    const k = `${f.f}|${f.dia}`;
+    mapa.set(k, (mapa.get(k) || 0) + (f.volumen || 0));
+  }
+  return [...mapa.values()];
 }
 
 /**
@@ -461,6 +491,43 @@ function pintarMovilidadPortada() {
     ${hecha ? `<div class="acciones">
       <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
     </div>` : ""}`;
+}
+
+function pintarResultado() {
+  stopAnim();
+  const r = resultadoSesion;
+  if (!r) { vista = "misiones"; pintarMisiones(); return; }
+  const colorRango = COLOR_RANGO[r.rango] || COLOR_RANGO.E;
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">Semana ${E.semana}</div>
+      <h2 class="mision__tit">${esc(r.nombreDia)}</h2>
+    </div>
+    <div class="resultado">
+      <div class="resultado__insignia" style="color:${colorRango}">
+        ${r.bloque ? insigniaSVG(r.bloque, 132, colorRango) : ""}
+        ${r.rango ? `<span class="resultado__rango" style="--rango:${colorRango}">${r.rango}</span>` : ""}
+      </div>
+      ${r.lema ? `<div class="resultado__lema">${esc(r.lema)}</div>` : ""}
+      <div class="atributos">
+        <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(r.volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Trabajo</span></div>
+        <div class="atr"><span class="atr__cl">MIN</span><span class="atr__val">${r.minutos ?? "—"}</span><span class="atr__nom">Duración</span></div>
+        <div class="atr"><span class="atr__cl">SERIES</span><span class="atr__val">${r.series}</span><span class="atr__nom">Completadas</span></div>
+        <div class="atr"><span class="atr__cl">XP</span><span class="atr__val">${miles(r.xp)}</span><span class="atr__nom">Ganada</span></div>
+      </div>
+      ${r.hito ? `<div class="resultado__hito">${esc(r.hito)}</div>` : ""}
+      <ul class="resultado__lista">
+        ${r.ejercicios.map(e => `<li class="${e.fallado ? "resultado__fallo" : ""}">
+            <span>${esc(e.nombre)}${e.unilateral ? " (los dos lados)" : ""}</span>
+            <span>${e.fallado ? "Fallado" : e.segundos ? `${e.series} × ${e.reps} s` : `${e.kg} kg × ${e.series} × ${e.reps}`}</span>
+          </li>`).join("")}
+      </ul>
+      <div class="acciones">
+        <button class="btn btn--go" id="descargarTarjeta">Descargar tarjeta</button>
+        <button class="btn btn--fantasma" id="continuarResultado">Continuar</button>
+      </div>
+    </div>`;
 }
 
 function pintarMovilidad() {
@@ -1404,6 +1471,7 @@ function pintar() {
   else if (vista === "manual") pintarManual();
   else if (vista === "ejercicio") pintarEjercicio();
   else if (vista === "movilidad") pintarMovilidad();
+  else if (vista === "resultado") pintarResultado();
   else if (vista === "dia") pintarDia();
   else pintarMisiones();
 }
@@ -1536,11 +1604,14 @@ async function cerrarMovilidad() {
     const minutos = brutos != null && brutos > 0 && brutos <= 300 ? brutos : null;
     const antes = P.estadisticas(filas);
 
+    /* Sin volumen ni récord que valga aquí: el rango de una semana de
+       movilidad se limita a lo hecho, nunca sube a A o S. */
+    const rango = P.rangoSesion({ pct: hechos / MOVILIDAD.length, volumen: 0, volMedio3: null, volRecordBloque: false, huboFallo: false });
     const fila = {
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: 0, ej: "movilidad", nombre: "Semana de movilidad",
       implemento: "corporal", kg: 0, carga: 0, minutos, nota, lados: 1,
-      series: hechos, reps: 0, volumen: 0, xp: completa ? XP_MOVILIDAD : 0
+      series: hechos, reps: 0, volumen: 0, xp: completa ? XP_MOVILIDAD : 0, rango
     };
     await DB.historial.anadir([fila]);
     filas.push(fila);
@@ -1558,18 +1629,21 @@ async function cerrarMovilidad() {
 
     /* Una semana de movilidad solo tiene un "día": completarla ya es
        la semana entera, para los logros que miran días distintos. */
-    const nuevos = await revisarLogros({
+    await revisarLogros({
       dia: 0, volumen: 0, series: hechos, subidas: 0, completa,
       hora: ahora.getHours(), diasParado: 0, minutos, records: 0
     }, completa ? 1 : nucleo(programaActivo()).length);
 
-    vista = "misiones";
+    resultadoSesion = {
+      bloque: "movilidad", nombreDia: "Movilidad", lema: "Recarga antes de la siguiente carga",
+      rango, fecha, volumen: 0, minutos, series: hechos, xp: completa ? XP_MOVILIDAD : 0,
+      hito: null,
+      ejercicios: MOVILIDAD.filter(b => sesion[b.clave]).map(b => ({
+        nombre: b.nombre, kg: 0, series: 1, reps: b.segundos, fallado: false, unilateral: !!b.unilateral, segundos: true
+      }))
+    };
+    vista = "resultado";
     pintar(); arriba();
-    if (!nuevos.length) {
-      aviso(completa
-        ? `<b>Movilidad completada</b><span>+${miles(XP_MOVILIDAD)} XP</span>`
-        : "Progreso guardado", "exito");
-    }
   } finally { cerrando = false; }
 }
 
@@ -1661,6 +1735,22 @@ async function cerrarSesion() {
   const diasParado = ultimaFecha
     ? Math.round((new Date(fecha) - new Date(ultimaFecha)) / 86400000) : 0;
 
+  /* Rango de la sesión: se calcula contra el historial ANTES de meter
+     las filas de hoy, y se guarda en cada una — así queda fijado para
+     siempre, no recalculado cada vez que se mire ese día. */
+  const prog = programaActivo();
+  const bloque = bloqueDe(d.nombre);
+  const totalPlaneado = d.ejercicios.reduce((a, e) => a + e.series, 0);
+  const completadas = nuevas.filter(f => !f.fallado).reduce((a, f) => a + f.series, 0);
+  const pct = totalPlaneado ? completadas / totalPlaneado : 1;
+  const huboFallo = nuevas.some(f => f.fallado);
+  const historicos = bloque ? volumenesDeBloque(bloque, prog) : [];
+  const volMedio3 = historicos.length
+    ? historicos.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, historicos.length) : null;
+  const volRecordBloque = historicos.length > 0 && volumen > Math.max(...historicos);
+  const rango = bloque ? P.rangoSesion({ pct, volumen, volMedio3, volRecordBloque, huboFallo }) : null;
+  if (rango) for (const f of nuevas) f.rango = rango;
+
   await DB.historial.anadir(nuevas);
   filas.push(...nuevas);
   tecnicaAbierta = null;
@@ -1684,19 +1774,30 @@ async function cerrarSesion() {
     aviso(`<b>Nuevo récord</b><span>${esc(r.nombre)} · ${r.marca} ${r.unidad}</span>`, "rango");
   }
 
-  const nuevos = await revisarLogros({
+  await revisarLogros({
     dia: d.n, volumen, series: nuevas.length, subidas, completa,
     hora: ahora.getHours(), diasParado, minutos, records: records.length
   });
 
-  /* De vuelta al tablero: se ve la misión marcada y qué queda de semana. */
-  vista = "misiones";
+  /* Línea de hito de la tarjeta: lo más gordo que haya pasado hoy,
+     una sola cosa. Un récord de ejercicio pesa más que uno de bloque,
+     y ese más que cerrar la semana. */
+  let hito = null;
+  if (records.length) hito = `Récord · ${records[0].nombre} ${records[0].marca} ${records[0].unidad}`;
+  else if (volRecordBloque) hito = `Récord de volumen · ${esc(d.nombre)}`;
+  else if (nucleo(prog).every(n => estadoDia(n).hecha)) hito = `Semana ${E.semana} cerrada`;
+
+  resultadoSesion = {
+    bloque, nombreDia: d.nombre, lema: d.lema, rango, fecha,
+    volumen, minutos, series: completadas, xp: xp + P.XP_MISION, hito,
+    ejercicios: nuevas.filter(f => f.series > 0).map(f => ({
+      nombre: f.nombre, kg: f.kg, series: f.series, reps: f.reps,
+      fallado: !!f.fallado, unilateral: EJERCICIOS[f.ej]?.unilateral,
+      segundos: EJERCICIOS[f.ej]?.unidad === "segundos"
+    }))
+  };
+  vista = "resultado";
   pintar(); arriba();
-  if (!nuevos.length && !records.length && despues.nivel === antes.nivel) {
-    const tiempo = minutos ? ` · ${minutos} min` : "";
-    const titulo = d.suelto && !completa ? "Bloque guardado" : "Misión completada";
-    aviso(`<b>${titulo}</b><span>+${miles(xp + P.XP_MISION)} XP · ${miles(volumen)} kg${tiempo}</span>`, "exito");
-  }
   if (subidas) {
     setTimeout(() => aviso(`${subidas} ejercicio${subidas > 1 ? "s" : ""} listo${subidas > 1 ? "s" : ""} para subir peso`), 600);
   }
@@ -1705,6 +1806,136 @@ async function cerrarSesion() {
 /* ---------- descargas ---------- */
 function bajar(nombre, texto, tipo) {
   const url = URL.createObjectURL(new Blob([texto], { type: tipo }));
+  const a = document.createElement("a");
+  a.href = url; a.download = nombre; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------- tarjeta de resumen ----------
+   Un <canvas> de verdad, no una foto del HTML: así se puede compartir
+   como imagen suelta. Los trazos del logo y de la insignia son los
+   mismos "d" que el SVG — Path2D los entiende igual. */
+async function dibujarTarjeta(r) {
+  const W = 1080, H = 1350, cx = W / 2;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  const colorRango = COLOR_RANGO[r.rango] || COLOR_RANGO.E;
+  try { await document.fonts.ready; } catch (e) {}
+
+  const fondo = ctx.createLinearGradient(0, 0, 0, H);
+  fondo.addColorStop(0, "#0B1018"); fondo.addColorStop(.55, "#0E1522"); fondo.addColorStop(1, "#120F1C");
+  ctx.fillStyle = fondo; ctx.fillRect(0, 0, W, H);
+  const halo = ctx.createRadialGradient(W * .22, 40, 0, W * .22, 40, W * .8);
+  halo.addColorStop(0, "rgba(56,189,248,.20)"); halo.addColorStop(1, "rgba(56,189,248,0)");
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+
+  const trazar = (rutas, x, y, escala, color, grosor) => {
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(escala, escala);
+    ctx.strokeStyle = color; ctx.lineWidth = grosor / escala;
+    ctx.lineCap = "square"; ctx.lineJoin = "miter";
+    for (const d of rutas) ctx.stroke(new Path2D(d));
+    ctx.restore();
+  };
+
+  /* logo, arriba a la izquierda */
+  trazar(LOGO.rutas, 66, 66, .58, "#E6EDF7", LOGO.trazo);
+
+  /* fecha, arriba a la derecha */
+  ctx.fillStyle = "#4E6076"; ctx.font = "500 22px 'IBM Plex Mono', monospace";
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  const fechaTxt = new Date(r.fecha + "T12:00:00").toLocaleDateString("es-ES",
+    { weekday: "short", day: "2-digit", month: "short" }).toUpperCase();
+  ctx.fillText(fechaTxt, W - 66, 84);
+
+  /* insignia central con aro de rango */
+  const cy = 340, radio = 156, tamIns = radio * 1.55;
+  ctx.save();
+  ctx.setLineDash([28, 18]);
+  ctx.strokeStyle = colorRango; ctx.lineWidth = 11;
+  ctx.beginPath(); ctx.arc(cx, cy, radio, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+  if (r.bloque && INSIGNIAS[r.bloque]) {
+    const ins = INSIGNIAS[r.bloque];
+    trazar(ins.rutas, cx - tamIns / 2, cy - tamIns / 2, tamIns / 200, "#E6EDF7", ins.trazo);
+  }
+  if (r.rango) {
+    const px = cx + radio * .74, py = cy + radio * .68;
+    ctx.fillStyle = "#0B1018"; ctx.strokeStyle = colorRango; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(px, py, 48, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = colorRango; ctx.font = "700 48px Oswald, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(r.rango, px, py + 3);
+  }
+
+  /* nombre del bloque y lema */
+  ctx.fillStyle = "#E6EDF7"; ctx.font = "700 56px Oswald, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText((r.nombreDia || "").toUpperCase(), cx, 570);
+  if (r.lema) {
+    ctx.fillStyle = "#8395AE"; ctx.font = "italic 400 27px 'IBM Plex Sans', sans-serif";
+    ctx.fillText(`"${r.lema}"`, cx, 610);
+  }
+
+  /* cuatro cifras */
+  const stats = [
+    [r.volumen ? (r.volumen / 1000).toFixed(1) + "t" : "—", "VOL"],
+    [String(r.minutos ?? "—"), "MIN"],
+    [String(r.series), "SERIES"],
+    [miles(r.xp), "XP"]
+  ];
+  const yStats = 700, colW = W / 4;
+  stats.forEach(([val, lab], i) => {
+    const x = colW * i + colW / 2;
+    ctx.fillStyle = "#E6EDF7"; ctx.font = "600 42px 'IBM Plex Mono', monospace"; ctx.textAlign = "center";
+    ctx.fillText(val, x, yStats);
+    ctx.fillStyle = "#4E6076"; ctx.font = "500 18px 'IBM Plex Mono', monospace";
+    ctx.fillText(lab, x, yStats + 32);
+  });
+
+  ctx.strokeStyle = "#22304A"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(70, 770); ctx.lineTo(W - 70, 770); ctx.stroke();
+
+  /* lista de ejercicios, fallados en rojo */
+  let y = 826;
+  for (const e of r.ejercicios) {
+    if (y > 1240) break;
+    const color = e.fallado ? "#F87171" : "#E6EDF7";
+    ctx.textAlign = "left"; ctx.font = "500 27px 'IBM Plex Sans', sans-serif";
+    ctx.fillStyle = color;
+    ctx.fillText(e.nombre + (e.unilateral ? " (los dos lados)" : ""), 70, y);
+    ctx.textAlign = "right"; ctx.font = "500 24px 'IBM Plex Mono', monospace";
+    ctx.fillStyle = e.fallado ? "#F87171" : "#8395AE";
+    ctx.fillText(e.fallado ? "FALLADO" : e.segundos ? `${e.series} × ${e.reps} s` : `${e.kg} kg × ${e.series} × ${e.reps}`, W - 70, y);
+    y += 48;
+  }
+
+  /* línea de hito, si hay algo que contar */
+  if (r.hito) {
+    ctx.textAlign = "center"; ctx.fillStyle = "#38BDF8"; ctx.font = "600 25px 'IBM Plex Mono', monospace";
+    ctx.fillText(r.hito.toUpperCase(), cx, 1300);
+  }
+
+  return new Promise(ok => cv.toBlob(ok, "image/png"));
+}
+
+/** Comparte la tarjeta como imagen; si el navegador no sabe compartir
+    ficheros (Safari de escritorio, algún Android viejo), la descarga
+    directamente — en iOS Safari eso abre la imagen para guardarla a mano. */
+async function compartirTarjeta(r) {
+  if (!r) return;
+  let blob;
+  try { blob = await dibujarTarjeta(r); }
+  catch (err) { aviso("No se pudo generar la tarjeta"); return; }
+
+  const nombre = `sistema-${r.bloque || "movilidad"}-${r.fecha}.png`;
+  const file = new File([blob], nombre, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Sistema", text: `${r.nombreDia} · rango ${r.rango || "—"}` }); return; }
+    catch (err) { if (err?.name === "AbortError") return; }
+  }
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = nombre; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1930,6 +2161,8 @@ document.addEventListener("click", async e => {
   /* --- acciones --- */
   if (b.id === "terminar") { await terminarSesion(); return; }
   if (b.id === "terminarMovilidad") { await cerrarMovilidad(); return; }
+  if (b.id === "continuarResultado") { resultadoSesion = null; vista = "misiones"; pintar(); arriba(); return; }
+  if (b.id === "descargarTarjeta") { await compartirTarjeta(resultadoSesion); return; }
 
   if (b.dataset.movbloque) {
     const sesion = E.sesion.movilidad || (E.sesion.movilidad = {});

@@ -82,6 +82,23 @@ export function mejorMarca(filas, clave) {
   return filas.reduce((a, f) => f.ej === clave ? Math.max(a, marcaDe(f)) : a, 0);
 }
 
+/**
+ * Rango de la sesión que se acaba de cerrar (E a S), determinista: a
+ * igualdad de datos, siempre el mismo rango. No compara entre
+ * ejercicios distintos, solo contra el propio historial del bloque.
+ *   E <50% series de trabajo · D 50-74% · C 75-99% · B 100%
+ *   A 100% y volumen por encima de la media de sus 3 últimas sesiones
+ *   S 100%, récord de volumen del bloque, ningún ejercicio fallado
+ */
+export function rangoSesion({ pct, volumen, volMedio3, volRecordBloque, huboFallo }) {
+  if (pct < 0.5) return "E";
+  if (pct < 0.75) return "D";
+  if (pct < 1) return "C";
+  if (volRecordBloque && !huboFallo) return "S";
+  if (volMedio3 != null && volumen > volMedio3) return "A";
+  return "B";
+}
+
 /* ---------- estadísticas desde el historial ---------- */
 export function estadisticas(filas) {
   const sesiones = new Map(), ejercicios = new Set();
