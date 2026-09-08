@@ -111,7 +111,6 @@ const pesoActual = () => {
   return h.length ? h[h.length - 1].kg : (cazador?.pesoCorporal || 80);
 };
 
-const pesoDe = ej => E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
 const escalon = ej => equipo.escalonDe(ej.implemento);
 
 /** Las veces que se registró este ejercicio, en orden de fecha.
@@ -122,10 +121,68 @@ function historialDe(clave) {
               .sort((a, b) => (a.ts || a.f).localeCompare(b.ts || b.f));
 }
 
-/** La última vez que se registró este ejercicio. */
+/** La última vez que se registró este ejercicio, fallada o no. */
 function ultimaDe(clave) {
   const h = historialDe(clave);
   return h.length ? h[h.length - 1] : null;
+}
+
+/** La última vez que se completó de verdad (sin contar las falladas). */
+function ultimaCompletadaDe(clave) {
+  const h = historialDe(clave).filter(f => !f.fallado);
+  return h.length ? h[h.length - 1] : null;
+}
+
+/** Cuántas sesiones distintas (de cualquier ejercicio) han cerrado
+    después de la que se indica. Sirve para medir "cuánto hace". */
+function sesionesTrasLa(fecha, diaN) {
+  const claves = new Set();
+  for (const f of filas) {
+    if (f.f > fecha || (f.f === fecha && f.dia !== diaN)) claves.add(`${f.f}|${f.dia}`);
+  }
+  return claves.size;
+}
+
+/** Tres sesiones enteras sin tocar este ejercicio: al volver, no se
+    confía en un peso al que solo se llegó por "sube el peso" sin
+    haberlo probado nunca. */
+function ausenciaLarga(clave) {
+  const u = ultimaDe(clave);
+  return !!u && sesionesTrasLa(u.f, u.dia) >= 3;
+}
+
+/**
+ * Peso de hoy para un ejercicio. Tras una ausencia larga, se vuelve al
+ * último peso completado de verdad (no al que proponía subir antes de
+ * desaparecer) y se corrige el guardado, para no repetir el aviso.
+ */
+const pesoDe = ej => {
+  if (ausenciaLarga(ej.clave)) {
+    const u = ultimaCompletadaDe(ej.clave);
+    if (u && E.pesos[ej.clave] !== u.kg) {
+      E.pesos[ej.clave] = u.kg;
+      E.listos[ej.clave] = false;
+      guardar();
+    }
+  }
+  return E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
+};
+
+/** kg que propone el motor de progresión al completar el tope de reps. */
+const incrementoDe = ej => ej.incremento ?? P.DEFECTO_INCREMENTO;
+
+/** El escalón real más cercano a un objetivo (no todo kg es montable). */
+const masCercano = (pasos, objetivo) =>
+  pasos.reduce((a, p) => Math.abs(p - objetivo) < Math.abs(a - objetivo) ? p : a, pasos[0]);
+
+/**
+ * Dos fallos seguidos en este ejercicio: 0 reps, o por debajo del
+ * rango bajo aunque se registrara algo. Toca bajar un escalón, no
+ * insistir con el mismo peso.
+ */
+function dosFallosSeguidos(ej) {
+  const ultimas = historialDe(ej.clave).slice(-2);
+  return ultimas.length === 2 && ultimas.every(f => f.fallado || f.reps < ej.min);
 }
 
 /**
@@ -552,13 +609,25 @@ function pintarDia() {
     const abierta = tecnicaAbierta === ej.sesionId;
     const enSeg = ej.unidad === "segundos";
 
+    /* Un fallo pesa más que un "listo": si vienes de dos fallos
+       seguidos no tiene sentido proponer subir a la vez. */
+    const progresable = ej.implemento !== "mancuerna" && ej.implemento !== "corporal";
+    let marcaHtml = "";
+    if (progresable && dosFallosSeguidos(ej)) {
+      const objetivo = masCercano(pasos, kg - incrementoDe(ej));
+      marcaHtml = `<button class="marca marca--baja" data-ajustar="${ej.sesionId}" data-obj="${objetivo}">Baja a ${objetivo} kg</button>`;
+    } else if (progresable && E.listos[ej.clave]) {
+      const objetivo = masCercano(pasos, kg + incrementoDe(ej));
+      marcaHtml = `<button class="marca" data-ajustar="${ej.sesionId}" data-obj="${objetivo}">Sube a ${objetivo} kg</button>`;
+    }
+
     html += `<section class="ej">
       <div class="ej__cab">
         <div class="ej__txt">
           <h3 class="ej__nom"><button class="ej__link" data-ficha="${ej.clave}">${esc(ej.nombre)}</button></h3>
           <div class="ej__meta">${ej.series} × ${ej.min}–${ej.max}${enSeg ? " s" : " reps"}${ej.unilateral ? ` por ${ej.unilateral} <em>(izq + der)</em>` : ""} · RIR 2–3${ej.nota ? ` · <em>${esc(ej.nota)}</em>` : ""}</div>
           <div class="ej__musc">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
-          ${E.listos[ej.clave] ? `<span class="marca">Sube el peso</span>` : ""}
+          ${marcaHtml}
         </div>
         <div class="ej__btns">
           <button class="ojo" data-tecnica="${ej.sesionId}" aria-expanded="${abierta}" aria-label="Ver técnica">${OJO}</button>
@@ -1617,6 +1686,18 @@ document.addEventListener("click", async e => {
       await guardar();
       await revisarLogros();
     }
+    repintarQuieto();
+    return;
+  }
+
+  /* --- aceptar la subida o bajada que propone el motor de progresión --- */
+  if (b.dataset.ajustar) {
+    const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.ajustar);
+    E.pesos[ej.clave] = +b.dataset.obj;
+    E.listos[ej.clave] = false;
+    const st = serie(ej);
+    if (!st.hechas.some(Boolean)) st.reps = repsSugeridas(ej, +b.dataset.obj);
+    await guardar();
     repintarQuieto();
     return;
   }

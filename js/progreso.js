@@ -14,6 +14,11 @@ export const xpDeSerie = (carga, reps) => Math.max(5, Math.round(carga * reps / 
 /* Bono por cerrar el día entero. Premia terminar, no picotear. */
 export const XP_MISION = 100;
 
+/* Salto que propone el motor de progresión cuando el ejercicio no
+   trae su propio "incremento" en el catálogo. 2 kg es un término
+   medio razonable entre un press pequeño y un básico de pierna. */
+export const DEFECTO_INCREMENTO = 2;
+
 /* En los unilaterales una serie marcada son los dos miembros, pero las reps
    que se guardan son las de un lado: sin esto la búlgara valdría la mitad de
    lo que de verdad mueves. Vale tanto para un ejercicio del catálogo como

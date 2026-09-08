@@ -476,8 +476,9 @@ body.puerta-abierta .top{display:none}
 .marca{
   display:inline-block;margin-top:9px;font-family:var(--mono);font-size:10.5px;font-weight:600;
   letter-spacing:.1em;text-transform:uppercase;background:var(--exito);color:var(--sobreExito);
-  padding:3px 8px;border-radius:3px;
+  padding:3px 8px;border-radius:3px;border:0;cursor:pointer;
 }
+.marca--baja{background:var(--peligro);color:#fff}
 .etq-fallo{
   display:inline-block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.08em;
   text-transform:uppercase;color:var(--peligro);border:1px solid var(--peligro);border-radius:3px;

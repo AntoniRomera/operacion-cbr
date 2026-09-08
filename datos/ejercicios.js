@@ -15,6 +15,9 @@
                XP van por partida doble.
    claves:     un "!" delante marca la que evita una lesión
    unidad:     "reps" salvo los isométricos, que van en segundos
+   incremento: kg que propone el motor de progresión al completar el
+               ejercicio (solo tiene sentido en barra). Sin él, se usa
+               el DEFECTO_INCREMENTO de progreso.js.
    ============================================================ */
 
 export const EJERCICIOS = {
@@ -22,7 +25,7 @@ export const EJERCICIOS = {
   /* ---------- empuje horizontal ---------- */
   banca: {
     nombre: "Press banca", grupo: "Pecho", patron: "Empuje horizontal",
-    implemento: "barra", figura: "banca", kgInicial: 40,
+    implemento: "barra", figura: "banca", kgInicial: 40, incremento: 2,
     musculos: ["Pectoral mayor", "Tríceps", "Deltoides anterior"],
     claves: [
       "Escápulas retraídas y clavadas al banco, arco lumbar natural.",
@@ -44,7 +47,7 @@ export const EJERCICIOS = {
   },
   cerrado: {
     nombre: "Press cerrado", grupo: "Pecho", patron: "Empuje horizontal",
-    implemento: "barra", figura: "banca", kgInicial: 30,
+    implemento: "barra", figura: "banca", kgInicial: 30, incremento: 1,
     musculos: ["Tríceps", "Pectoral interno"],
     claves: [
       "Manos a la anchura de los hombros, no más juntas.",
@@ -79,7 +82,7 @@ export const EJERCICIOS = {
   /* ---------- bisagra y tirón ---------- */
   muerto: {
     nombre: "Peso muerto", grupo: "Espalda", patron: "Bisagra de cadera",
-    implemento: "barra", figura: "muerto", kgInicial: 60,
+    implemento: "barra", figura: "muerto", kgInicial: 60, incremento: 4,
     musculos: ["Isquiotibiales", "Glúteo", "Espalda baja", "Trapecio"],
     claves: [
       "Barra pegada a la espinilla desde el primer centímetro.",
@@ -136,7 +139,7 @@ export const EJERCICIOS = {
   /* ---------- pierna ---------- */
   senta: {
     nombre: "Sentadilla trasera", grupo: "Piernas", patron: "Rodilla dominante",
-    implemento: "barra", figura: "senta", kgInicial: 40,
+    implemento: "barra", figura: "senta", kgInicial: 40, incremento: 4,
     musculos: ["Cuádriceps", "Glúteo", "Aductores"],
     claves: [
       "Barra sobre el trapecio, no sobre las cervicales.",
@@ -147,7 +150,7 @@ export const EJERCICIOS = {
   },
   rdl: {
     nombre: "Peso muerto rumano", grupo: "Piernas", patron: "Bisagra de cadera",
-    implemento: "barra", figura: "rdl", kgInicial: 40,
+    implemento: "barra", figura: "rdl", kgInicial: 40, incremento: 4,
     musculos: ["Isquiotibiales", "Glúteo"],
     claves: [
       "Rodilla casi fija: es bisagra de cadera, no sentadilla.",
@@ -169,7 +172,7 @@ export const EJERCICIOS = {
   },
   hip: {
     nombre: "Hip thrust", grupo: "Piernas", patron: "Extensión de cadera",
-    implemento: "barra", figura: "hip", kgInicial: 50,
+    implemento: "barra", figura: "hip", kgInicial: 50, incremento: 4,
     musculos: ["Glúteo mayor", "Isquiotibiales"],
     claves: [
       "Borde del banco justo bajo las escápulas.",
@@ -191,7 +194,7 @@ export const EJERCICIOS = {
   },
   gemelo: {
     nombre: "Gemelo de pie con barra", grupo: "Piernas", patron: "Aislamiento",
-    implemento: "barra", figura: "gemelo", kgInicial: 60,
+    implemento: "barra", figura: "gemelo", kgInicial: 60, incremento: 4,
     musculos: ["Gemelo", "Sóleo"],
     claves: [
       "Sube lo máximo posible y aguanta un segundo arriba.",
@@ -204,7 +207,7 @@ export const EJERCICIOS = {
   /* ---------- hombro ---------- */
   militar: {
     nombre: "Press militar de pie", grupo: "Hombros", patron: "Empuje vertical",
-    implemento: "barra", figura: "militar", kgInicial: 30,
+    implemento: "barra", figura: "militar", kgInicial: 30, incremento: 1,
     musculos: ["Deltoides anterior", "Tríceps", "Core"],
     claves: [
       "Glúteo y abdomen apretados: el cuerpo es la base.",
