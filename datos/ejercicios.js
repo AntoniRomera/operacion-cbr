@@ -18,6 +18,9 @@
    incremento: kg que propone el motor de progresión al completar el
                ejercicio (solo tiene sentido en barra). Sin él, se usa
                el DEFECTO_INCREMENTO de progreso.js.
+   volumenEscala: multiplica el volumen de la serie (por defecto 1).
+               Los acarreos isométricos usan 0.1 — igual que las reps,
+               pero en segundos, dispararía el número si no se atenúa.
    ============================================================ */
 
 export const EJERCICIOS = {
@@ -160,14 +163,14 @@ export const EJERCICIOS = {
     ]
   },
   bulgara: {
-    nombre: "Búlgara con disco", grupo: "Piernas", patron: "Unilateral",
-    implemento: "disco", figura: "bulgara", kgInicial: 15, unilateral: "pierna",
+    nombre: "Búlgara con barra", grupo: "Piernas", patron: "Unilateral",
+    implemento: "barra", figura: "bulgara", kgInicial: 20, unilateral: "pierna",
     musculos: ["Cuádriceps", "Glúteo", "Estabilizadores"],
     claves: [
       "Empeine del pie trasero sobre el banco, no la puntera.",
       "Pie delantero lo bastante adelante para que la rodilla no se pase.",
       "Baja vertical, el peso en el talón delantero.",
-      "Disco abrazado al pecho o mancuernas a los lados."
+      "Barra sobre el trapecio como en sentadilla, no en los hombros."
     ]
   },
   hip: {
@@ -326,6 +329,69 @@ export const EJERCICIOS = {
       "Glúteo y abdomen apretados, cadera ni alta ni hundida.",
       "Disco en la zona lumbar alta, colocado por alguien o con cuidado.",
       "Si la cadera cae, la serie ha acabado. Cuenta lo que aguantes bien."
+    ]
+  },
+
+  /* ---------- acarreos ----------
+     Sin kettlebells ni mancuernas cargables: los dos van con barra.
+     Las variantes "iso" son la versión sin sitio para caminar — se
+     registran en segundos y su volumen se calcula aparte (kg×s/10),
+     no como una serie normal, para no disparar el número. */
+  suitcase: {
+    nombre: "Suitcase carry con barra", grupo: "Core", patron: "Unilateral",
+    implemento: "barra", figura: "suitcase", kgInicial: 40, unilateral: "lado",
+    musculos: ["Oblicuos", "Antebrazo", "Trapecio"],
+    claves: [
+      "Barra en vertical, agarrada por el extremo, pegada al muslo.",
+      "Hombros nivelados: no te inclines hacia el lado cargado.",
+      "Pasos cortos y control, no carrera.",
+      "Cada rep es un paso; cambia de lado al terminar la serie."
+    ]
+  },
+  suitcaseiso: {
+    nombre: "Suitcase hold isométrico", grupo: "Core", patron: "Unilateral",
+    implemento: "barra", figura: "suitcase", kgInicial: 40, unilateral: "lado",
+    unidad: "segundos", volumenEscala: 0.1,
+    musculos: ["Oblicuos", "Antebrazo", "Trapecio"],
+    claves: [
+      "Mismo agarre que el suitcase carry, pero parado.",
+      "Hombros nivelados todo el tiempo, sin inclinarte.",
+      "Si no hay sitio para caminar, esto entrena lo mismo.",
+      "Cambia de lado a mitad del tiempo total."
+    ]
+  },
+  yoke: {
+    nombre: "Yoke walk", grupo: "Piernas", patron: "Extensión de cadera",
+    implemento: "barra", figura: "yoke", kgInicial: 60,
+    musculos: ["Core completo", "Trapecio", "Cuádriceps"],
+    claves: [
+      "Barra sobre el trapecio, como en sentadilla, bien centrada.",
+      "Pasos cortos y rápidos, tronco rígido.",
+      "Respira entre pasos, no aguantes el aire toda la serie.",
+      "Cada rep es un paso."
+    ]
+  },
+  yokeiso: {
+    nombre: "Yoke hold isométrico", grupo: "Piernas", patron: "Extensión de cadera",
+    implemento: "barra", figura: "yoke", kgInicial: 60,
+    unidad: "segundos", volumenEscala: 0.1,
+    musculos: ["Core completo", "Trapecio", "Cuádriceps"],
+    claves: [
+      "Barra sobre el trapecio, de pie, sin caminar.",
+      "Tronco rígido, como si fueras a caminar en cualquier momento.",
+      "Si no hay sitio para caminar, esto entrena lo mismo.",
+      "Reparte el peso igual entre los dos pies."
+    ]
+  },
+  colgado: {
+    nombre: "Colgado en barra de dominadas", grupo: "Espalda", patron: "Tirón vertical",
+    implemento: "corporal", factorPeso: 0, figura: "colgado", unidad: "segundos",
+    musculos: ["Antebrazo", "Dorsal ancho", "Hombro"],
+    claves: [
+      "Agarre a la anchura de hombros, cuerpo relajado.",
+      "Hombros activos, no colgado de las articulaciones sueltas.",
+      "Sin balanceo: cuenta el tiempo quieto.",
+      "Sin carga: solo tu peso, y ni siquiera ese cuenta como volumen."
     ]
   }
 };

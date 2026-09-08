@@ -48,10 +48,10 @@ export const FIG = {
     a:{h:[98,30],sh:[96,45],hip:[97,75],kn:[96,104],ft:[93,134],el:[95,62],hd:[94,79],b:[94,79]},
     z:{h:[122,60],sh:[110,70],hip:[80,88],kn:[92,106],ft:[95,134],el:[108,90],hd:[106,110],b:[106,110]} },
 
-  bulgara:{ view:"side", gear:["floor","bench:126,186,100"], imp:"discSide",
-    a:{h:[84,32],sh:[83,47],hip:[83,77],kn:[80,106],ft:[78,134],el:[74,58],hd:[86,62],b:[87,62],
+  bulgara:{ view:"side", gear:["floor","bench:126,186,100"], imp:"barSide",
+    a:{h:[84,32],sh:[83,47],hip:[83,77],kn:[80,106],ft:[78,134],el:[72,42],hd:[86,46],b:[83,45],
        kn2:[112,96],ft2:[136,100],toe2:[146,100]},
-    z:{h:[84,52],sh:[83,67],hip:[83,95],kn:[76,112],ft:[78,134],el:[74,78],hd:[86,82],b:[87,82],
+    z:{h:[84,52],sh:[83,67],hip:[83,95],kn:[76,112],ft:[78,134],el:[72,62],hd:[86,66],b:[83,65],
        kn2:[110,118],ft2:[136,100],toe2:[146,100]} },
 
   hip:{ view:"side", gear:["floor","bench:22,72,88"], imp:"barSide",
@@ -133,5 +133,17 @@ export const FIG = {
 
   hombro:{ view:"side", gear:["floor"],
     a:{h:[100,26],sh:[99,42],hip:[98,75],kn:[97,104],ft:[94,134],el:[97,26],hd:[94,10]},
-    z:{h:[100,26],sh:[99,42],hip:[98,75],kn:[97,104],ft:[94,134],el:[97,26],hd:[94,10]} }
+    z:{h:[100,26],sh:[99,42],hip:[98,75],kn:[97,104],ft:[94,134],el:[97,26],hd:[94,10]} },
+
+  /* ---------- acarreos ----------
+     Sin implemento dibujado: la barra en vertical (suitcase) o el
+     bastidor del yugo no encajan en los tipos de "imp" existentes, y
+     dibujar solo el cuerpo ya deja claro el gesto. */
+  suitcase:{ view:"side", gear:["floor"],
+    a:{h:[100,30],sh:[99,45],hip:[98,75],kn:[97,104],ft:[94,134],el:[90,72],hd:[86,92]},
+    z:{h:[97,32],sh:[98,47],hip:[99,76],kn:[97,104],ft:[94,134],el:[90,72],hd:[86,92]} },
+
+  yoke:{ view:"side", gear:["floor"], imp:"barSide",
+    a:{h:[98,28],sh:[97,43],hip:[97,74],kn:[110,102],ft:[120,134],el:[86,48],hd:[90,42],b:[97,41]},
+    z:{h:[98,28],sh:[97,43],hip:[97,74],kn:[86,102],ft:[76,134],el:[86,48],hd:[90,42],b:[97,41]} }
 };

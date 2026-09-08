@@ -1618,7 +1618,7 @@ async function cerrarSesion() {
     }
 
     if (buenas.length) {
-      const vol = carga * buenas.reduce((a, r) => a + r, 0) * lados;
+      const vol = carga * buenas.reduce((a, r) => a + r, 0) * lados * (ej.volumenEscala ?? 1);
       const xpEj = buenas.reduce((a, r) => a + P.xpDeSerie(carga, r), 0) * lados;
       /* Reps representativas de la fila: la media, para que series×reps
          siga midiendo el total real aunque hayan variado entre sí. */
