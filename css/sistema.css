@@ -573,6 +573,7 @@ body.puerta-abierta .top{display:none}
 .atr__cl{font-family:var(--mono);font-size:10px;color:var(--sis);letter-spacing:.18em}
 .atr__val{font-family:var(--display);font-size:23px;font-weight:700;letter-spacing:.02em}
 .atr__nom{font-family:var(--mono);font-size:10px;color:var(--tenue);letter-spacing:.09em;text-transform:uppercase}
+.atr--tenue .atr__cl,.atr--tenue .atr__val{color:var(--tenue)}
 
 /* ---------- logros ---------- */
 .grupo{margin:16px 12px 0}

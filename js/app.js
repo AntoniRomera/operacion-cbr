@@ -585,14 +585,17 @@ function pintarDia() {
       else                                    html += `<div class="carga__nota">Disco abrazado o apoyado</div>`;
 
       /* Entrar en frío a una barra cargada es como se rompe la gente.
-         Los escalones salen de los discos que tienes, no de porcentajes. */
-      if (ej.implemento === "barra" && kg > equipo.BARRA.kg + 10) {
+         Los escalones salen de los discos que tienes, no de porcentajes.
+         Se genera siempre, aunque luego no se complete la sesión. */
+      if (ej.implemento === "barra") {
         const rampa = equipo.aproximacion(kg);
-        if (!Array.isArray(st.aprox) || st.aprox.length !== rampa.length) st.aprox = Array(rampa.length).fill(false);
+        const igual = Array.isArray(st.aprox) && st.aprox.length === rampa.length
+          && st.aprox.every((s, k) => s.kg === rampa[k].kg);
+        if (!igual) st.aprox = rampa.map(s => ({ ...s, hecha: false }));
         html += `<div class="calienta">
             <span class="calienta__et">Aproximación</span>
-            ${rampa.map((s, k) =>
-              `<button class="calienta__s ${st.aprox[k] ? "on" : ""}" data-aprox="${ej.sesionId}" data-ak="${k}">${s.kg}<i>×${s.reps}</i></button>`).join("")}
+            ${st.aprox.map((s, k) =>
+              `<button class="calienta__s ${s.hecha ? "on" : ""}" data-aprox="${ej.sesionId}" data-ak="${k}">${s.kg}<i>×${s.reps}</i></button>`).join("")}
           </div>`;
       }
       html += `</div>`;
@@ -769,6 +772,7 @@ function pintarEjercicio() {
   const kgActual = E.pesos[clave] ?? ej.kgInicial ?? 0;
   const mejor = mias.reduce((a, f) => Math.max(a, f.kg || 0), 0);
   const volumen = mias.reduce((a, f) => a + (f.volumen || 0), 0);
+  const volumenAprox = mias.reduce((a, f) => a + (f.volumenAprox || 0), 0);
   const corporal = ej.implemento === "corporal";
   const marca = P.mejorMarca(filas, clave);
   const ultimaVez = mias.length
@@ -798,6 +802,7 @@ function pintarEjercicio() {
       <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${mias.length}</span><span class="atr__nom">Sesiones</span></div>
       <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Acumulado</span></div>
       <div class="atr"><span class="atr__cl">ÚLTIMA</span><span class="atr__val">${ultimaVez}</span><span class="atr__nom">Días desde</span></div>
+      ${volumenAprox > 0 ? `<div class="atr atr--tenue"><span class="atr__cl">APROX.</span><span class="atr__val">${(volumenAprox / 1000).toFixed(1)} t</span><span class="atr__nom">Volumen de calentamiento</span></div>` : ""}
     </div>
 
     ${hayGraficas ? `
@@ -1336,6 +1341,9 @@ async function cerrarSesion() {
   for (const ej of d.ejercicios) {
     const st = serie(ej);
     const hechas = st.hechas.filter(Boolean).length;
+    /* La rampa no cuenta como serie de trabajo, pero si se marcó algo
+       de calentar sí queda su volumen aparte, en gris, en el historial. */
+    const volumenAprox = (st.aprox || []).filter(s => s.hecha).reduce((a, s) => a + s.kg * s.reps, 0);
     if (hechas < ej.series && !ya.has(ej.clave)) completa = false;
     if (!hechas) { delete E.sesion[ej.sesionId]; continue; }
 
@@ -1364,7 +1372,7 @@ async function cerrarSesion() {
       cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
       semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
       implemento: ej.implemento, kg, carga, minutos, nota, lados,
-      series: hechas, reps: st.reps, volumen: vol, xp: xpEj
+      series: hechas, reps: st.reps, volumen: vol, xp: xpEj, volumenAprox
     });
     volumen += vol; xp += xpEj;
     delete E.sesion[ej.sesionId];
@@ -1598,7 +1606,13 @@ document.addEventListener("click", async e => {
   if (b.dataset.aprox) {
     const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.aprox);
     const st = serie(ej), k = +b.dataset.ak;
-    st.aprox[k] = !st.aprox[k];
+    st.aprox[k].hecha = !st.aprox[k].hecha;
+    /* Cuenta como tiempo de sesión aunque no sea la primera serie de
+       trabajo: calentar ya es parte de la sesión. */
+    if (st.aprox[k].hecha && !E.iniciada) {
+      E.iniciada = new Date().toISOString();
+      mantenerPantalla(true);
+    }
     await guardar();
     repintarQuieto();
     return;

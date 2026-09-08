@@ -163,19 +163,18 @@ export function escalonDe(implemento) {
 }
 
 /**
- * Series de aproximación para una carga de trabajo con barra.
- * No son porcentajes de manual: se redondean al escalón que de verdad
- * puedes montar con tus discos, que es lo único que vas a poner.
- * Bajan de reps según sube el peso — calentar no es fatigarse.
+ * Series de aproximación para una carga de trabajo con barra: barra
+ * vacía × 8, 50 % × 5, 75 % × 3. No son las series de trabajo — se
+ * marcan aparte y no suman volumen ni XP, solo tiempo de sesión.
+ * Los porcentajes se redondean al escalón que de verdad puedes montar
+ * con tus discos, que es lo único que vas a poner.
  */
 export function aproximacion(kgTrabajo) {
   const totales = CARGAS_BARRA.map(c => c.total);
   const barra = totales[0];
-  if (kgTrabajo <= barra + 10) return [{ kg: barra, reps: 10 }];
-
-  const vistos = new Set();
-  const series = [];
-  for (const { parte, reps } of [{ parte: .45, reps: 8 }, { parte: .65, reps: 5 }, { parte: .85, reps: 3 }]) {
+  const vistos = new Set([barra]);
+  const series = [{ kg: barra, reps: 8 }];
+  for (const { parte, reps } of [{ parte: .5, reps: 5 }, { parte: .75, reps: 3 }]) {
     const ideal = kgTrabajo * parte;
     const kg = totales.filter(t => t < kgTrabajo)
                       .reduce((a, t) => Math.abs(t - ideal) < Math.abs(a - ideal) ? t : a, barra);
