@@ -480,12 +480,14 @@ function cambioHTML(ej) {
 
 function discoHTML(kg) {
   const p = equipo.COLOR_DISCO[kg];
-  return `<div class="disco" style="background:${p.fondo};color:${p.texto};height:${p.alto}px;width:${p.ancho}px">${kg}</div>`;
+  return `<div class="disco${p.frac ? " disco--frac" : ""}" style="background:${p.fondo};color:${p.texto};height:${p.alto}px;width:${p.ancho}px">${kg}</div>`;
 }
 function barraHTML(total) {
   const c = equipo.repartoDe(total);
   if (!c) return "";
   if (!c.izq.length && !c.der.length) return `<div class="barra"><span class="barra__sola">Barra sola · ${equipo.BARRA.kg} kg</span></div>`;
+  /* Ascendente deja los fraccionales (los pesos más ligeros) en la
+     punta, junto al collarín, y los bumpers pegados al eje. */
   const izq = [...c.izq].sort((a, b) => a - b).map(discoHTML).join("");
   const der = [...c.der].sort((a, b) => b - a).map(discoHTML).join("");
   return `<div class="barra">
@@ -493,7 +495,8 @@ function barraHTML(total) {
       <div class="barra__eje"></div>
       <div class="barra__lado barra__lado--d">${der}</div>
     </div>
-    <div class="barra__pies"><span>Izquierda ${c.izq.join(" + ") || "—"}</span><span>Derecha ${c.der.join(" + ") || "—"}</span></div>`;
+    <div class="barra__pies"><span>Izquierda ${c.izq.join(" + ") || "—"}</span><span>Derecha ${c.der.join(" + ") || "—"}</span></div>
+    ${c.cabe ? "" : `<div class="barra__aviso">No cabe entero en el manguito con este reparto</div>`}`;
 }
 
 function pintarDia() {

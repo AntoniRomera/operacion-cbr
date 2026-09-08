@@ -5,17 +5,27 @@
    peso y el dibujo de la barra.
 
    Nada de listas escritas a mano: las combinaciones se resuelven
-   probando todos los repartos posibles de discos entre los dos
-   lados. Con seis discos son 729 repartos, se hace al arrancar y
-   no se nota.
+   probando todos los repartos posibles de bumpers entre los dos
+   lados (729 repartos con seis bumpers) y, sobre cada uno, todas
+   las combinaciones de pares de fraccionales (16 con cuatro pares).
+   Se hace al arrancar y no se nota.
    ============================================================ */
 
 export const BARRA = { nombre: "Barra olímpica", kg: 20 };
 
-/* Los discos que tienes, uno por entrada. Hay dos de 5 kg. */
+/* Bumpers, uno por entrada. Hay dos de 5 kg. Todos de 450 mm de
+   diámetro: lo que cambia con el peso es el grosor, no el diámetro. */
 export const DISCOS = [25, 20, 15, 10, 5, 5];
 
-/* Mancuernas fijas: pares completos disponibles, en kg por mano. */
+/* Fraccionales FitnessTech por pares (uno a cada lado, para afinar sin
+   descuadrar la barra). No son de acero: son bumper también, solo que
+   pequeños. Con estos cuatro pares se cubre cualquier entero de 0 a
+   10 kg por encima de lo que pongan los bumpers. */
+export const FRACCIONALES = [0.5, 1, 1.5, 2];
+
+/* Mancuernas hexagonales fijas: por ahora solo el par de 5 kg. El de
+   8 kg se compra más adelante — no se ofrece hasta que exista. Son de
+   peso fijo: en ellas se progresa por reps, nunca proponiéndoles kilos. */
 export const MANCUERNAS = [5];
 
 /* Elásticos: todavía no hay ninguno en casa. Cuando lleguen, se listan
@@ -23,27 +33,48 @@ export const MANCUERNAS = [5];
    implemento en el catálogo sin tocar nada más. */
 export const BANDAS = [];
 
-/* Colores oficiales de competición. Los usa el dibujo de la barra. */
+/* Grosores asumidos para el aviso de manguito lleno (no hay dato real
+   de fábrica): 30 mm por bumper, cualquiera que sea su peso, y menos
+   por fraccional al ser mucho más finos. 410 mm es lo útil del manguito
+   antes del collarín. */
+export const GROSOR_BUMPER_MM = 30;
+export const GROSOR_FRACCIONAL_MM = 8;
+export const MANGUITO_UTIL_MM = 410;
+
+/* Colores oficiales de competición. Los usa el dibujo de la barra.
+   Diámetro (alto) igual para los cinco bumpers; el ancho sí decrece
+   con el peso, que es donde de verdad varía el grosor real. */
 export const COLOR_DISCO = {
-  25: { fondo: "var(--p25)", texto: "#fff",    alto: 64, ancho: 19 },
-  20: { fondo: "var(--p20)", texto: "#fff",    alto: 59, ancho: 17 },
-  15: { fondo: "var(--p15)", texto: "#1A1305", alto: 53, ancho: 15 },
-  10: { fondo: "var(--p10)", texto: "#fff",    alto: 46, ancho: 13 },
-  5:  { fondo: "var(--p5)",  texto: "#1A1F25", alto: 37, ancho: 10 },
-  2.5:{ fondo: "#5C6C7A",    texto: "#fff",    alto: 30, ancho: 8 },
-  1.25:{fondo: "#8496A6",    texto: "#1A1F25", alto: 26, ancho: 7 }
+  25:  { fondo: "var(--p25)", texto: "#fff",    alto: 64, ancho: 19 },
+  20:  { fondo: "var(--p20)", texto: "#fff",    alto: 64, ancho: 17 },
+  15:  { fondo: "var(--p15)", texto: "#1A1305", alto: 64, ancho: 15 },
+  10:  { fondo: "var(--p10)", texto: "#fff",    alto: 64, ancho: 13 },
+  5:   { fondo: "var(--p5)",  texto: "#1A1F25", alto: 64, ancho: 10 },
+  2:   { fondo: "#5C6C7A",    texto: "#fff",    alto: 24, ancho: 8, frac: true },
+  1.5: { fondo: "#6C7A88",    texto: "#fff",    alto: 21, ancho: 7, frac: true },
+  1:   { fondo: "#7C8A98",    texto: "#fff",    alto: 18, ancho: 6, frac: true },
+  0.5: { fondo: "#8C9AA8",    texto: "#1A1F25", alto: 15, ancho: 5, frac: true }
 };
 
 /* ---------- resolver de cargas de barra ---------- */
 
+/** Todos los subconjuntos de una lista (incluido el vacío). Con cuatro
+ * fraccionales son 16; nada que no se pueda hacer al arrancar. */
+function subconjuntos(pesos) {
+  let out = [[]];
+  for (const p of pesos) out = out.concat(out.map(s => [...s, p]));
+  return out;
+}
+
 /**
- * Todos los pesos montables en la barra, con el reparto de discos.
- * Cada disco puede ir al lado izquierdo, al derecho o quedarse fuera;
- * solo valen los repartos con el mismo peso a cada lado.
- * @returns {{total:number, izq:number[], der:number[]}[]} de menor a mayor
+ * Repartos de bumpers entre los dos lados, uno por total alcanzable.
+ * Cada bumper puede ir al lado izquierdo, al derecho o quedarse fuera;
+ * solo valen los repartos con el mismo peso a cada lado. Con varios
+ * repartos posibles para el mismo total, gana el de menos discos.
  */
-function resolverBarra(discos = DISCOS, barra = BARRA.kg) {
+function repartosBumper(discos, barra) {
   const mejores = new Map();
+  const puntua = c => c.izq.length + c.der.length;
 
   const repartir = (i, izq, der) => {
     if (i === discos.length) {
@@ -56,19 +87,50 @@ function resolverBarra(discos = DISCOS, barra = BARRA.kg) {
       if (!previo || puntua(cand) < puntua(previo)) mejores.set(total, cand);
       return;
     }
-    repartir(i + 1, izq, der);                       // este disco se queda fuera
+    repartir(i + 1, izq, der);                       // este bumper se queda fuera
     izq.push(discos[i]); repartir(i + 1, izq, der); izq.pop();
     der.push(discos[i]); repartir(i + 1, izq, der); der.pop();
   };
 
-  /* Menos discos es mejor: menos cambios entre series y menos jaleo. */
-  const puntua = c => c.izq.length + c.der.length;
-
   repartir(0, [], []);
-  return [...mejores.values()].sort((a, b) => a.total - b.total);
+  return [...mejores.values()];
 }
 
-/** Sumas posibles con cualquier combinación de discos (disco suelto, landmine). */
+/**
+ * Combina cada reparto de bumpers con cada combinación de pares de
+ * fraccionales (siempre uno a cada lado, para no descuadrar la barra)
+ * y se queda con el mejor candidato por total: primero que quepa en
+ * el manguito, y si hay empate, el de menos discos.
+ */
+function resolverBarra(discos = DISCOS, fraccionales = FRACCIONALES, barra = BARRA.kg) {
+  const bases = repartosBumper(discos, barra);
+  const pares = subconjuntos(fraccionales);
+  const mejorQue = (a, b) => a.cabe !== b.cabe
+    ? a.cabe
+    : (a.izq.length + a.der.length) < (b.izq.length + b.der.length);
+
+  const combos = new Map();
+  for (const base of bases) {
+    const grosorBaseIzq = base.izq.length * GROSOR_BUMPER_MM;
+    const grosorBaseDer = base.der.length * GROSOR_BUMPER_MM;
+    for (const par of pares) {
+      const total = base.total + par.reduce((a, b) => a + b, 0) * 2;
+      const grosorFrac = par.length * GROSOR_FRACCIONAL_MM;
+      const cand = {
+        total,
+        izq: [...base.izq, ...par],
+        der: [...base.der, ...par],
+        cabe: grosorBaseIzq + grosorFrac <= MANGUITO_UTIL_MM
+           && grosorBaseDer + grosorFrac <= MANGUITO_UTIL_MM
+      };
+      const previo = combos.get(total);
+      if (!previo || mejorQue(cand, previo)) combos.set(total, cand);
+    }
+  }
+  return [...combos.values()].sort((a, b) => a.total - b.total);
+}
+
+/** Sumas posibles con cualquier combinación de bumpers (disco suelto, landmine). */
 function sumasPosibles(discos = DISCOS) {
   const set = new Set([0]);
   for (const d of discos) {
