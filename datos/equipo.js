@@ -43,17 +43,21 @@ export const MANGUITO_UTIL_MM = 410;
 
 /* Colores oficiales de competición. Los usa el dibujo de la barra.
    Diámetro (alto) igual para los cinco bumpers; el ancho sí decrece
-   con el peso, que es donde de verdad varía el grosor real. */
+   con el peso, que es donde de verdad varía el grosor real.
+
+   Los fraccionales son bumpers también, de 50 mm de diámetro exterior:
+   mismo código de color que su equivalente en peso (blanco/verde/
+   amarillo/azul), mucho más finos en el dibujo. */
 export const COLOR_DISCO = {
   25:  { fondo: "var(--p25)", texto: "#fff",    alto: 64, ancho: 19 },
   20:  { fondo: "var(--p20)", texto: "#fff",    alto: 64, ancho: 17 },
   15:  { fondo: "var(--p15)", texto: "#1A1305", alto: 64, ancho: 15 },
   10:  { fondo: "var(--p10)", texto: "#fff",    alto: 64, ancho: 13 },
   5:   { fondo: "var(--p5)",  texto: "#1A1F25", alto: 64, ancho: 10 },
-  2:   { fondo: "#5C6C7A",    texto: "#fff",    alto: 24, ancho: 8, frac: true },
-  1.5: { fondo: "#6C7A88",    texto: "#fff",    alto: 21, ancho: 7, frac: true },
-  1:   { fondo: "#7C8A98",    texto: "#fff",    alto: 18, ancho: 6, frac: true },
-  0.5: { fondo: "#8C9AA8",    texto: "#1A1F25", alto: 15, ancho: 5, frac: true }
+  2:   { fondo: "var(--p20)", texto: "#fff",    alto: 20, ancho: 8, frac: true },
+  1.5: { fondo: "var(--p15)", texto: "#1A1305", alto: 20, ancho: 7, frac: true },
+  1:   { fondo: "var(--p10)", texto: "#fff",    alto: 20, ancho: 6, frac: true },
+  0.5: { fondo: "var(--p5)",  texto: "#1A1F25", alto: 20, ancho: 5, frac: true }
 };
 
 /* ---------- resolver de cargas de barra ---------- */
