@@ -147,7 +147,13 @@ const serie = ej => {
       reps: repsSugeridas(ej, pesoDe(ej))
     };
   }
-  return E.sesion[ej.sesionId];
+  const st = E.sesion[ej.sesionId];
+  /* Reps por serie: se guarda lo que marcaba el contador en el momento
+     de marcar esa serie, no un valor compartido. Sesiones a medias de
+     antes de este cambio no lo traen: se rellena vacío, sin perder las
+     series ya marcadas. */
+  if (!Array.isArray(st.repsSerie)) st.repsSerie = Array(ej.series).fill(null);
+  return st;
 };
 
 /* ---------- avisos del Sistema ---------- */
@@ -615,7 +621,10 @@ function pintarDia() {
         </div>
       </div>
       <div class="series">${st.hechas.map((v, k) =>
-        `<button class="serie ${v ? "ok" : ""}" data-serie="${ej.sesionId}" data-k="${k}" data-descanso="${ej.descanso}">${v ? "✓" : k + 1}</button>`).join("")}</div>
+        `<button class="serie ${v ? "ok" : ""} ${v && !st.repsSerie[k] ? "serie--fallida" : ""}"
+          data-serie="${ej.sesionId}" data-k="${k}" data-descanso="${ej.descanso}"
+          aria-label="${v ? `Serie ${k + 1}, ${st.repsSerie[k] || 0} reps` : `Marcar serie ${k + 1}`}"
+          >${v ? (st.repsSerie[k] || 0) : k + 1}</button>`).join("")}</div>
     </section>`;
   };
 
@@ -779,10 +788,24 @@ function pintarEjercicio() {
     ? Math.round((new Date(hoy()) - new Date(mias[mias.length - 1].f)) / 86400000)
     : "—";
 
-  const puntosPeso = mias.map(f => ({ f: f.f, v: f.kg }));
-  const puntosVol = mias.map(f => ({ f: f.f, v: Math.round(f.volumen) }));
+  /* Un fallo parcial parte la sesión en dos filas (trabajo + fallada):
+     para "veces" y las gráficas se agrupan de vuelta por sesión, o un
+     0kg fantasma del todo o nada duplicaría el punto de ese día. */
+  const sesiones = [...mias.reduce((mapa, f) => {
+    const k = `${f.f}|${f.dia}`;
+    const acc = mapa.get(k);
+    if (!acc) mapa.set(k, { f: f.f, kg: f.kg, volumen: f.volumen || 0 });
+    else {
+      acc.volumen += f.volumen || 0;
+      if (!f.fallado) acc.kg = f.kg;
+    }
+    return mapa;
+  }, new Map()).values()];
 
-  const hayGraficas = mias.length >= 2;
+  const puntosPeso = sesiones.map(s => ({ f: s.f, v: s.kg }));
+  const puntosVol = sesiones.map(s => ({ f: s.f, v: Math.round(s.volumen) }));
+
+  const hayGraficas = sesiones.length >= 2;
 
   $("app").innerHTML = `
     <div class="mision">
@@ -799,7 +822,7 @@ function pintarEjercicio() {
       <div class="atr"><span class="atr__cl">TOPE</span>
         <span class="atr__val">${corporal ? equipo.cargaReal(ej, 0, pesoActual()) + " kg" : (mejor ? mejor + " kg" : "—")}</span>
         <span class="atr__nom">${corporal ? "Carga efectiva" : "Más peso movido"}</span></div>
-      <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${mias.length}</span><span class="atr__nom">Sesiones</span></div>
+      <div class="atr"><span class="atr__cl">VECES</span><span class="atr__val">${sesiones.length}</span><span class="atr__nom">Sesiones</span></div>
       <div class="atr"><span class="atr__cl">VOL</span><span class="atr__val">${(volumen / 1000).toFixed(1)} t</span><span class="atr__nom">Acumulado</span></div>
       <div class="atr"><span class="atr__cl">ÚLTIMA</span><span class="atr__val">${ultimaVez}</span><span class="atr__nom">Días desde</span></div>
       ${volumenAprox > 0 ? `<div class="atr atr--tenue"><span class="atr__cl">APROX.</span><span class="atr__val">${(volumenAprox / 1000).toFixed(1)} t</span><span class="atr__nom">Volumen de calentamiento</span></div>` : ""}
@@ -830,7 +853,7 @@ function pintarEjercicio() {
         <tr><th>Fecha</th><th>Carga</th><th>Series</th><th>${corporal ? "Reps" : "1RM"}</th></tr>
         ${[...mias].reverse().map(f => {
           const m = P.marcaDe(f);
-          return `<tr><td>${diaMes(f.f)}</td><td>${f.kg} kg</td>
+          return `<tr><td>${diaMes(f.f)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td><td>${f.kg} kg</td>
             <td>${f.series}×${f.reps}${ej.unilateral ? ` /${ej.unilateral}` : ""}</td>
             <td>${m ? `${m}${corporal ? "" : " kg"}${m === marca ? " ★" : ""}` : "—"}</td></tr>
             ${f.nota ? `<tr class="fila-nota"><td colspan="4">“${esc(f.nota)}”</td></tr>` : ""}`;
@@ -1051,7 +1074,7 @@ function pintarPerfil() {
         <tr><th>Fecha</th><th>Ejercicio</th><th>Carga</th><th>Series</th><th></th></tr>
         ${ultimas.map(f => `
           <tr class="${editando === f.id ? "fila--abierta" : ""}" data-fila="${f.id}">
-            <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}</td><td>${f.kg} kg</td>
+            <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td><td>${f.kg} kg</td>
             <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
           </tr>
           ${editando === f.id ? editor(f) : ""}`).join("")}
@@ -1340,7 +1363,8 @@ async function cerrarSesion() {
 
   for (const ej of d.ejercicios) {
     const st = serie(ej);
-    const hechas = st.hechas.filter(Boolean).length;
+    const marcadas = st.hechas.map((v, k) => v ? (st.repsSerie[k] ?? 0) : null).filter(v => v !== null);
+    const hechas = marcadas.length;
     /* La rampa no cuenta como serie de trabajo, pero si se marcó algo
        de calentar sí queda su volumen aparte, en gris, en el historial. */
     const volumenAprox = (st.aprox || []).filter(s => s.hecha).reduce((a, s) => a + s.kg * s.reps, 0);
@@ -1350,31 +1374,52 @@ async function cerrarSesion() {
     const kg = pesoDe(ej);
     const carga = equipo.cargaReal(ej, kg, pesoActual());
     const lados = P.ladosDe(ej);
-    const vol = carga * hechas * st.reps * lados;
-    const xpEj = P.xpDeSerie(carga, st.reps) * hechas * lados;
+    /* 0 reps en una serie marcada es un intento fallido, no un hueco:
+       no suma volumen ni XP, y queda su propia fila en el historial. */
+    const buenas = marcadas.filter(r => r > 0);
+    const fallidas = marcadas.length - buenas.length;
 
-    /* Rango de reps agotado con todas las series: toca subir peso. */
-    if (hechas === ej.series && st.reps >= ej.max && ej.implemento !== "mancuerna" && ej.implemento !== "corporal") {
+    /* Rango de reps agotado en todas las series marcadas: toca subir
+       peso. Un fallo (0 reps) nunca cuenta como listo. */
+    if (hechas === ej.series && marcadas.every(r => r >= ej.max) && ej.implemento !== "mancuerna" && ej.implemento !== "corporal") {
       if (!E.listos[ej.clave]) subidas++;
       E.listos[ej.clave] = true;
     }
 
-    /* Récord contra la mejor marca anterior de ese ejercicio. La primera
-       vez no cuenta: cualquier número sería un récord y no significa nada. */
-    const marcaPrevia = P.mejorMarca(filas, ej.clave);
-    const fila = { implemento: ej.implemento, carga, reps: st.reps };
-    const marca = P.marcaDe(fila);
-    if (marcaPrevia > 0 && marca > marcaPrevia) {
-      records.push({ nombre: ej.nombre, marca, unidad: P.unidadMarca(fila) });
+    if (buenas.length) {
+      const vol = carga * buenas.reduce((a, r) => a + r, 0) * lados;
+      const xpEj = buenas.reduce((a, r) => a + P.xpDeSerie(carga, r), 0) * lados;
+      /* Reps representativas de la fila: la media, para que series×reps
+         siga midiendo el total real aunque hayan variado entre sí. */
+      const repsMedia = Math.round(buenas.reduce((a, r) => a + r, 0) / buenas.length);
+
+      /* Récord contra la mejor marca anterior de ese ejercicio. La primera
+         vez no cuenta: cualquier número sería un récord y no significa nada. */
+      const marcaPrevia = P.mejorMarca(filas, ej.clave);
+      const fila = { implemento: ej.implemento, carga, reps: repsMedia };
+      const marca = P.marcaDe(fila);
+      if (marcaPrevia > 0 && marca > marcaPrevia) {
+        records.push({ nombre: ej.nombre, marca, unidad: P.unidadMarca(fila) });
+      }
+
+      nuevas.push({
+        cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+        semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
+        implemento: ej.implemento, kg, carga, minutos, nota, lados,
+        series: buenas.length, reps: repsMedia, volumen: vol, xp: xpEj, volumenAprox
+      });
+      volumen += vol; xp += xpEj;
     }
 
-    nuevas.push({
-      cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
-      semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-      implemento: ej.implemento, kg, carga, minutos, nota, lados,
-      series: hechas, reps: st.reps, volumen: vol, xp: xpEj, volumenAprox
-    });
-    volumen += vol; xp += xpEj;
+    if (fallidas) {
+      nuevas.push({
+        cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+        semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
+        implemento: ej.implemento, kg, carga, minutos, nota, lados,
+        series: fallidas, reps: 0, volumen: 0, xp: 0,
+        volumenAprox: buenas.length ? 0 : volumenAprox, fallado: true
+      });
+    }
     delete E.sesion[ej.sesionId];
   }
 
@@ -1623,6 +1668,10 @@ document.addEventListener("click", async e => {
     const ej = dia(diaActivo).ejercicios.find(x => x.sesionId === b.dataset.serie);
     const st = serie(ej), k = +b.dataset.k;
     st.hechas[k] = !st.hechas[k];
+    /* Se guarda lo que marcaba el contador en este instante; si luego
+       lo subes o lo bajas, las series ya marcadas no cambian. Marcar
+       con el contador a 0 es marcarla como fallada, a propósito. */
+    st.repsSerie[k] = st.hechas[k] ? st.reps : null;
     /* La primera serie marcada arranca la sesión: cronómetro y pantalla. */
     if (st.hechas[k] && !E.iniciada) {
       E.iniciada = new Date().toISOString();

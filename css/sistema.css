@@ -478,6 +478,11 @@ body.puerta-abierta .top{display:none}
   letter-spacing:.1em;text-transform:uppercase;background:var(--exito);color:var(--sobreExito);
   padding:3px 8px;border-radius:3px;
 }
+.etq-fallo{
+  display:inline-block;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--peligro);border:1px solid var(--peligro);border-radius:3px;
+  padding:1px 4px;vertical-align:1px;
+}
 .ojo{
   flex:0 0 auto;width:40px;height:40px;border:1px solid var(--linea);background:var(--panel2);
   border-radius:8px;cursor:pointer;color:var(--apagado);display:flex;align-items:center;justify-content:center;
@@ -546,6 +551,8 @@ body.puerta-abierta .top{display:none}
 }
 .serie.ok{background:var(--exito);border-color:var(--exito);color:var(--sobreExito);font-weight:600;
           box-shadow:0 0 14px rgba(52,211,153,.35)}
+.serie.serie--fallida{background:var(--peligro);border-color:var(--peligro);color:#fff;
+          box-shadow:0 0 14px rgba(248,113,113,.35)}
 .serie:active{transform:scale(.97)}
 
 /* ---------- botones ---------- */
