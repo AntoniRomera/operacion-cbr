@@ -105,6 +105,7 @@ const programaActivo = () => PROGRAMAS[E?.programa] || PROGRAMAS[PROGRAMA_DEFECT
  */
 function dia(n) {
   const d = diaRutina(programaActivo(), n);
+  if (d.repesca) return { ...d, ejercicios: ejerciciosRepesca(programaActivo()) };
   return {
     ...d,
     ejercicios: d.ejercicios.map(e => {
@@ -117,6 +118,30 @@ function dia(n) {
       };
     })
   };
+}
+
+/**
+ * Ejercicios del día de repesca: lo que falte de los días núcleo que
+ * esta semana se han quedado sin ninguna serie registrada. Se reparten
+ * por turnos entre los días que faltan (primero el primero de cada uno,
+ * luego el segundo...) para no vaciar un solo patrón, y se cortan en 7
+ * — un parche puntual, no una sesión entera de más. Si el mismo patrón
+ * falta dos veces (PPL x2), no se repite el ejercicio.
+ */
+const TOPE_REPESCA = 7;
+function ejerciciosRepesca(prog) {
+  const faltan = nucleo(prog).filter(n => registradosSemana(n).size === 0);
+  const porDia = faltan.map(n => dia(n).ejercicios);
+
+  const vistos = new Set(), salida = [];
+  for (let i = 0; salida.length < TOPE_REPESCA && porDia.some(arr => i < arr.length); i++) {
+    for (const arr of porDia) {
+      if (salida.length >= TOPE_REPESCA) break;
+      const ej = arr[i];
+      if (ej && !vistos.has(ej.clave)) { vistos.add(ej.clave); salida.push(ej); }
+    }
+  }
+  return salida;
 }
 
 /** El valor que se está ajustando en el perfil, sin guardar todavía. */
@@ -227,6 +252,10 @@ const serie = ej => {
      antes de este cambio no lo traen: se rellena vacío, sin perder las
      series ya marcadas. */
   if (!Array.isArray(st.repsSerie)) st.repsSerie = Array(ej.series).fill(null);
+  /* Peso por serie: mismo motivo que repsSerie — si cambias el peso a
+     media sesión, las series ya marcadas no deben mentir sobre lo que
+     movieron de verdad. */
+  if (!Array.isArray(st.pesoSerie)) st.pesoSerie = Array(ej.series).fill(null);
   return st;
 };
 
@@ -860,11 +889,17 @@ function pintarDia() {
           <button class="mini" data-reps="${ej.sesionId}" data-dir="1" aria-label="Más">+</button>
         </div>
       </div>
-      <div class="series">${st.hechas.map((v, k) =>
-        `<button class="serie ${v ? "ok" : ""} ${v && !st.repsSerie[k] ? "serie--fallida" : ""}"
+      <div class="series">${st.hechas.map((v, k) => {
+        const corporal = ej.implemento === "corporal";
+        const repsMarca = st.repsSerie[k] || 0;
+        const pesoMarca = st.pesoSerie[k] ?? kg;
+        const texto = corporal ? `${repsMarca}` : `${pesoMarca}×${repsMarca}`;
+        const etiqueta = corporal ? `${repsMarca} reps` : `${pesoMarca} kg × ${repsMarca} reps`;
+        return `<button class="serie ${v ? "ok" : ""} ${v && !repsMarca ? "serie--fallida" : ""}"
           data-serie="${ej.sesionId}" data-k="${k}" data-descanso="${ej.descanso}"
-          aria-label="${v ? `Serie ${k + 1}, ${st.repsSerie[k] || 0} reps` : `Marcar serie ${k + 1}`}"
-          >${v ? (st.repsSerie[k] || 0) : k + 1}</button>`).join("")}</div>
+          aria-label="${v ? `Serie ${k + 1}, ${etiqueta}` : `Marcar serie ${k + 1}`}"
+          >${v ? texto : k + 1}</button>`;
+      }).join("")}</div>
     </section>`;
   };
 
@@ -1291,7 +1326,7 @@ function pintarPerfil() {
       <div class="arsenal">${Object.values(PROGRAMAS).map(p => `
         <button class="arma ${p.id === programaActivo().id ? "" : "arma--nueva"}" data-programa="${p.id}">
           <span class="arma__nom">${esc(p.nombre)}</span>
-          <span class="arma__meta">${p.dias.length} días · ${totalSeries(p)} series/semana</span>
+          <span class="arma__meta">${nucleo(p).length} días · ${totalSeries(p)} series/semana</span>
         </button>`).join("")}</div>
       <p class="vt__pie">${esc(programaActivo().resumen)}</p>
     </div>
@@ -1373,10 +1408,10 @@ function pintarManual() {
       <tr><td colspan="3">Descanso: ${esc(programaActivo().descansos)}</td></tr>
     </table>
     <p>Cada patrón (empuje, tirón, pierna) cubre el cuerpo entero, hombro pequeño, brazo
-    y cadera incluidos: no hace falta un cuarto día suelto para completarlo. El programa
-    de 6 días repite los mismos tres patrones dos veces por semana. El peso muerto pesado
-    va siempre en el día de tirón y el rumano en el de pierna, así que nunca caen en el
-    mismo día ni la lumbar carga dos veces seguidas sin haber tocado antes otro patrón.</p>
+    y cadera incluidos. El programa de 6 días repite los mismos tres patrones dos veces por
+    semana. El peso muerto pesado va siempre en el día de tirón y el rumano en el de pierna,
+    así que nunca caen en el mismo día ni la lumbar carga dos veces seguidas sin haber
+    tocado antes otro patrón.</p>
 
     <h2>Elegir programa</h2>
     <p>Por defecto sigues el <strong>PPL de 3 días</strong>: empuje, tirón y pierna, una vez
@@ -1384,8 +1419,16 @@ function pintarManual() {
     de volumen, cambia a <strong>PPL x2 de 6 días</strong> desde la ficha de cazador: los
     mismos tres patrones, dos veces por semana. Cambiar de programa no borra historial ni
     pesos guardados — solo cambia qué días salen y cuántos hay.</p>
-    <div class="alerta"><p>No recuperes una sesión perdida metiéndola en el día de descanso.
-    Está ahí a propósito: sin él, las sesiones seguidas se acumulan y a las tres semanas se
+
+    <h2>Repesca</h2>
+    <p>El último día del programa (4 en PPL3, 7 en PPL6) es la <strong>repesca</strong>: se
+    rellena solo con lo que se haya quedado sin ninguna serie esa semana, hasta un tope de
+    <strong>7 ejercicios</strong> repartidos entre los días que falten. Si no falta nada,
+    sale vacía. No cuenta como núcleo — no hace falta completarla para pasar de semana ni
+    suma al contador de días — pero sí suma a volumen, XP y estadísticas como cualquier otra
+    serie.</p>
+    <div class="alerta"><p>No la uses para meter una sesión entera perdida: el tope de 7 es
+    a propósito. Colar sesiones seguidas sin descanso acumula fatiga y a las tres semanas se
     te caen las reps en todo.</p></div>
 
     <h2>Calentamiento y aproximación</h2>
@@ -1668,62 +1711,88 @@ async function cerrarSesion() {
 
   for (const ej of d.ejercicios) {
     const st = serie(ej);
-    const marcadas = st.hechas.map((v, k) => v ? (st.repsSerie[k] ?? 0) : null).filter(v => v !== null);
-    const hechas = marcadas.length;
+    /* Cada serie lleva su propio peso, no el del ejercicio entero: si
+       cambiaste de escalón a media sesión, cada tanda se valora con el
+       peso que de verdad tenía puesto, no con el que quede al cerrar. */
+    const marcas = st.hechas.map((v, k) => v
+      ? { reps: st.repsSerie[k] ?? 0, kg: st.pesoSerie[k] ?? pesoDe(ej) }
+      : null).filter(m => m !== null);
+    const hechas = marcas.length;
     /* La rampa no cuenta como serie de trabajo, pero si se marcó algo
        de calentar sí queda su volumen aparte, en gris, en el historial. */
     const volumenAprox = (st.aprox || []).filter(s => s.hecha).reduce((a, s) => a + s.kg * s.reps, 0);
     if (hechas < ej.series && !ya.has(ej.clave)) completa = false;
     if (!hechas) { delete E.sesion[ej.sesionId]; continue; }
 
-    const kg = pesoDe(ej);
-    const carga = equipo.cargaReal(ej, kg, pesoActual());
     const lados = P.ladosDe(ej);
-    /* 0 reps en una serie marcada es un intento fallido, no un hueco:
-       no suma volumen ni XP, y queda su propia fila en el historial. */
-    const buenas = marcadas.filter(r => r > 0);
-    const fallidas = marcadas.length - buenas.length;
 
     /* Rango de reps agotado en todas las series marcadas: toca subir
-       peso. Un fallo (0 reps) nunca cuenta como listo. */
-    if (hechas === ej.series && marcadas.every(r => r >= ej.max) && ej.implemento !== "mancuerna" && ej.implemento !== "corporal") {
+       peso. Solo cuentan las hechas al peso actual — si alguna se hizo
+       a otro peso, no es lo mismo que agotar el rango de hoy. Un fallo
+       (0 reps) nunca cuenta como listo. */
+    const kgActual = pesoDe(ej);
+    const alActual = marcas.filter(m => m.kg === kgActual);
+    if (hechas === ej.series && alActual.length === ej.series && alActual.every(m => m.reps >= ej.max)
+        && ej.implemento !== "mancuerna" && ej.implemento !== "corporal") {
       if (!E.listos[ej.clave]) subidas++;
       E.listos[ej.clave] = true;
     }
 
-    if (buenas.length) {
-      const vol = carga * buenas.reduce((a, r) => a + r, 0) * lados * (ej.volumenEscala ?? 1);
-      const xpEj = buenas.reduce((a, r) => a + P.xpDeSerie(carga, r), 0) * lados;
-      /* Reps representativas de la fila: la media, para que series×reps
-         siga midiendo el total real aunque hayan variado entre sí. */
-      const repsMedia = Math.round(buenas.reduce((a, r) => a + r, 0) / buenas.length);
-
-      /* Récord contra la mejor marca anterior de ese ejercicio. La primera
-         vez no cuenta: cualquier número sería un récord y no significa nada. */
-      const marcaPrevia = P.mejorMarca(filas, ej.clave);
-      const fila = { implemento: ej.implemento, carga, reps: repsMedia };
-      const marca = P.marcaDe(fila);
-      if (marcaPrevia > 0 && marca > marcaPrevia) {
-        records.push({ nombre: ej.nombre, marca, unidad: P.unidadMarca(fila) });
-      }
-
-      nuevas.push({
-        cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
-        semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-        implemento: ej.implemento, kg, carga, minutos, nota, lados,
-        series: buenas.length, reps: repsMedia, volumen: vol, xp: xpEj, volumenAprox
-      });
-      volumen += vol; xp += xpEj;
+    /* Una fila del historial por peso distinto usado en el ejercicio:
+       así el volumen, la XP y el récord de cada tanda se calculan con
+       su carga real, no con una mezcla. Lo normal (un solo peso) sigue
+       dando una sola fila, como siempre. */
+    const porPeso = new Map();
+    for (const m of marcas) {
+      if (!porPeso.has(m.kg)) porPeso.set(m.kg, []);
+      porPeso.get(m.kg).push(m.reps);
     }
 
-    if (fallidas) {
-      nuevas.push({
-        cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
-        semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
-        implemento: ej.implemento, kg, carga, minutos, nota, lados,
-        series: fallidas, reps: 0, volumen: 0, xp: 0,
-        volumenAprox: buenas.length ? 0 : volumenAprox, fallado: true
-      });
+    let primeraFila = true;
+    for (const [kg, reps] of porPeso) {
+      const carga = equipo.cargaReal(ej, kg, pesoActual());
+      /* 0 reps en una serie marcada es un intento fallido, no un hueco:
+         no suma volumen ni XP, y queda su propia fila en el historial. */
+      const buenas = reps.filter(r => r > 0);
+      const fallidas = reps.length - buenas.length;
+      const aprox = primeraFila ? volumenAprox : 0;
+
+      if (buenas.length) {
+        const vol = carga * buenas.reduce((a, r) => a + r, 0) * lados * (ej.volumenEscala ?? 1);
+        const xpEj = buenas.reduce((a, r) => a + P.xpDeSerie(carga, r), 0) * lados;
+        /* Reps representativas de la fila: la media, para que series×reps
+           siga midiendo el total real aunque hayan variado entre sí. */
+        const repsMedia = Math.round(buenas.reduce((a, r) => a + r, 0) / buenas.length);
+
+        /* Récord contra la mejor marca anterior de ese ejercicio. La primera
+           vez no cuenta: cualquier número sería un récord y no significa nada. */
+        const marcaPrevia = P.mejorMarca(filas, ej.clave);
+        const fila = { implemento: ej.implemento, carga, reps: repsMedia };
+        const marca = P.marcaDe(fila);
+        if (marcaPrevia > 0 && marca > marcaPrevia) {
+          records.push({ nombre: ej.nombre, marca, unidad: P.unidadMarca(fila) });
+        }
+
+        nuevas.push({
+          cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+          semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
+          implemento: ej.implemento, kg, carga, minutos, nota, lados,
+          series: buenas.length, reps: repsMedia, volumen: vol, xp: xpEj, volumenAprox: aprox
+        });
+        volumen += vol; xp += xpEj;
+        primeraFila = false;
+      }
+
+      if (fallidas) {
+        nuevas.push({
+          cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+          semana: E.semana, dia: d.n, ej: ej.clave, nombre: ej.nombre,
+          implemento: ej.implemento, kg, carga, minutos, nota, lados,
+          series: fallidas, reps: 0, volumen: 0, xp: 0,
+          volumenAprox: buenas.length ? 0 : aprox, fallado: true
+        });
+        primeraFila = false;
+      }
     }
     delete E.sesion[ej.sesionId];
   }
@@ -2147,6 +2216,7 @@ document.addEventListener("click", async e => {
        lo subes o lo bajas, las series ya marcadas no cambian. Marcar
        con el contador a 0 es marcarla como fallada, a propósito. */
     st.repsSerie[k] = st.hechas[k] ? st.reps : null;
+    st.pesoSerie[k] = st.hechas[k] ? pesoDe(ej) : null;
     /* La primera serie marcada arranca la sesión: cronómetro y pantalla. */
     if (st.hechas[k] && !E.iniciada) {
       E.iniciada = new Date().toISOString();

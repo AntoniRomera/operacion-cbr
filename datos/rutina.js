@@ -92,6 +92,26 @@ function semana(calendario) {
   return calendario.map(({ n, cuando, patron }) => ({ n, cuando, ...patron }));
 }
 
+/**
+ * Día de repesca: un +1 suelto que no cuenta como núcleo (no hace falta
+ * para pasar de semana ni suma a "X de N días"). Sus ejercicios no están
+ * fijados aquí — se calculan en tiempo real con lo que se haya quedado
+ * sin hacer esa semana, con un tope de 7 (ver `ejerciciosRepesca` en
+ * app.js). Vacío por defecto: si no falta nada, no pide nada.
+ */
+function repesca(n) {
+  return {
+    n, cuando: "Cuando puedas", suelto: true, repesca: true,
+    nombre: "Repesca", lema: "El Sistema no da nada por perdido",
+    trabaja: "Lo que se quedó atrás esta semana",
+    calentamiento: [
+      "5 minutos de cardio suave.",
+      "Un par de series ligeras del primer ejercicio antes de ir al peso de trabajo."
+    ],
+    ejercicios: []
+  };
+}
+
 export const PROGRAMAS = {
   ppl3: {
     id: "ppl3", nombre: "PPL · 3 días", frecuencia: 1,
@@ -99,11 +119,11 @@ export const PROGRAMAS = {
              "brazo y cadera ya repartido dentro de cada uno. Doble progresión: " +
              "primero subes reps dentro del rango, y solo al llegar arriba subes peso.",
     descansos: "Miércoles, viernes, sábado y domingo",
-    dias: semana([
+    dias: [...semana([
       { n: 1, cuando: "Lunes",  patron: PATRON_EMPUJE },
       { n: 2, cuando: "Martes", patron: PATRON_TIRON },
       { n: 3, cuando: "Jueves", patron: PATRON_PIERNAS }
-    ])
+    ]), repesca(4)]
   },
   ppl6: {
     id: "ppl6", nombre: "PPL x2 · 6 días", frecuencia: 2,
@@ -111,14 +131,14 @@ export const PROGRAMAS = {
              "dos veces y el volumen semanal se duplica. Para las épocas con tiempo " +
              "y material de sobra — no es el programa por defecto.",
     descansos: "Domingo",
-    dias: semana([
+    dias: [...semana([
       { n: 1, cuando: "Lunes",     patron: PATRON_EMPUJE },
       { n: 2, cuando: "Martes",    patron: PATRON_TIRON },
       { n: 3, cuando: "Miércoles", patron: PATRON_PIERNAS },
       { n: 4, cuando: "Jueves",    patron: PATRON_EMPUJE },
       { n: 5, cuando: "Viernes",   patron: PATRON_TIRON },
       { n: 6, cuando: "Sábado",    patron: PATRON_PIERNAS }
-    ])
+    ]), repesca(7)]
   }
 };
 
