@@ -121,17 +121,20 @@ function dia(n) {
 }
 
 /**
- * Ejercicios del día de repesca: lo que falte de los días núcleo que
- * esta semana se han quedado sin ninguna serie registrada. Se reparten
- * por turnos entre los días que faltan (primero el primero de cada uno,
- * luego el segundo...) para no vaciar un solo patrón, y se cortan en 7
- * — un parche puntual, no una sesión entera de más. Si el mismo patrón
- * falta dos veces (PPL x2), no se repite el ejercicio.
+ * Ejercicios del día de repesca: lo que falte, ejercicio a ejercicio,
+ * en los días núcleo de esta semana — no solo los días que no se han
+ * tocado en absoluto. Un día a medias (se hizo algún ejercicio, pero no
+ * todos) deja pendientes igual que uno sin empezar. Se reparten por
+ * turnos entre los días con algo pendiente (primero el primero de cada
+ * uno, luego el segundo...) para no vaciar un solo patrón, y se cortan
+ * en 7 — un parche puntual, no una sesión entera de más. Si el mismo
+ * patrón falta dos veces (PPL x2), no se repite el ejercicio.
  */
 const TOPE_REPESCA = 7;
 function ejerciciosRepesca(prog) {
-  const faltan = nucleo(prog).filter(n => registradosSemana(n).size === 0);
-  const porDia = faltan.map(n => dia(n).ejercicios);
+  const porDia = nucleo(prog)
+    .map(n => { const ya = registradosSemana(n); return dia(n).ejercicios.filter(e => !ya.has(e.clave)); })
+    .filter(arr => arr.length);
 
   const vistos = new Set(), salida = [];
   for (let i = 0; salida.length < TOPE_REPESCA && porDia.some(arr => i < arr.length); i++) {
