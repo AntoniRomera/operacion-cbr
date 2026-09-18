@@ -20,7 +20,7 @@ let cazador = null;          // perfil activo
 let E = null;                // su estado: semana, pesos, sesión a medias
 let filas = [];              // historial ya cargado
 let desbloqueados = [];      // ids de logros conseguidos
-let vista = "puerta";        // puerta · misiones · dia · logros · perfil · manual
+let vista = "puerta";        // puerta · misiones · dia · logros · historial · perfil · manual
 let diaActivo = 1;
 let resultadoSesion = null;  // tarjeta de la última sesión cerrada
 let tecnicaAbierta = null;
@@ -32,6 +32,8 @@ let candado = null;              // bloqueo de apagado de pantalla
 let ejercicioActivo = null;      // ficha de ejercicio abierta
 let puntoSel = { tipo: null, i: null };   // punto tocado en una gráfica
 let editando = null;             // id de la fila del historial en edición
+let semanasAbiertas = null;      // Set<número de semana> desplegadas en Historial
+let sesionAbierta = null;        // clave "fecha|día" de la sesión abierta en Historial
 let motor = "";
 
 const CLAVE_SESION = "sistema:cazador";
@@ -358,6 +360,8 @@ async function entrar(id) {
   document.body.classList.remove("puerta-abierta");
   vista = "misiones";
   cambiando = false;
+  semanasAbiertas = null;
+  sesionAbierta = null;
   await revisarLogros();
   pintar();
 }
@@ -401,12 +405,13 @@ function pintarCabecera() {
 
 /* ---------- barra inferior ---------- */
 const ICONOS = {
-  misiones: `<rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/>`,
-  logros:   `<path d="M8 3h8v6a4 4 0 0 1-8 0V3Z"/><path d="M8 5.5H5V7a3 3 0 0 0 3 3"/><path d="M16 5.5h3V7a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8.5 21h7"/>`,
-  perfil:   `<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/>`,
-  manual:   `<path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2V5Z"/><path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2V5Z"/>`
+  misiones:  `<rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/>`,
+  logros:    `<path d="M8 3h8v6a4 4 0 0 1-8 0V3Z"/><path d="M8 5.5H5V7a3 3 0 0 0 3 3"/><path d="M16 5.5h3V7a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8.5 21h7"/>`,
+  historial: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>`,
+  perfil:    `<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/>`,
+  manual:    `<path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2V5Z"/><path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2V5Z"/>`
 };
-const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", perfil: "Perfil", manual: "Manual" };
+const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", historial: "Historial", perfil: "Perfil", manual: "Manual" };
 
 function pintarNav() {
   const activa = vista === "dia" || vista === "movilidad" || vista === "resultado" ? "misiones" : vista;
@@ -1177,6 +1182,92 @@ function pintarLogros() {
 }
 
 /* ============================================================
+   HISTORIAL
+   Las sesiones ya cerradas, agrupadas por semana. El día y el bloque
+   se resuelven contra el programa activo AHORA, no el de cuando se
+   entrenó — si cambiaste de programa entre medias, una fila vieja
+   puede salir con el nombre de día de hoy. Es la misma asunción que ya
+   hace volumenesDeBloque, no algo nuevo de esta vista.
+   ============================================================ */
+function pintarHistorial() {
+  stopAnim();
+  const sesiones = P.sesiones(filas);
+
+  if (!sesiones.length) {
+    $("app").innerHTML = `
+      <div class="mision">
+        <div class="mision__cab">Historial</div>
+        <h2 class="mision__tit">Sin sesiones</h2>
+        <div class="mision__lema">Todavía no has cerrado ninguna</div>
+      </div>
+      <div class="vt"><p class="vt__txt">En cuanto cierres tu primera sesión, aparece aquí.</p></div>`;
+    return;
+  }
+
+  const porSemana = new Map();
+  for (const s of sesiones) {
+    const sem = s.filas[0].semana;
+    if (!porSemana.has(sem)) porSemana.set(sem, []);
+    porSemana.get(sem).push(s);
+  }
+  const semanas = [...porSemana.keys()].sort((a, b) => b - a);
+  if (!semanasAbiertas) semanasAbiertas = new Set([semanas[0]]);
+
+  /* El nombre del día puede no existir ya en el programa activo
+     (p. ej. veniste de ppl6 y ahora estás en ppl3). */
+  const nombreDia = n => { try { return dia(n); } catch { return null; } };
+
+  const filaSesion = s => {
+    const clave = `${s.f}|${s.dia}`;
+    const d = nombreDia(s.dia);
+    const rango = s.filas[0].rango;
+    const huboFallo = s.filas.some(f => f.fallado);
+    const xp = s.filas.reduce((a, f) => a + (f.xp || 0), 0);
+    const abierta = sesionAbierta === clave;
+    return `
+      <button class="sesion ${abierta ? "sesion--abierta" : ""}" data-sesion="${esc(clave)}">
+        <span class="sesion__dia">${esc(d ? d.nombre : `Día ${s.dia}`)}</span>
+        <span class="sesion__fecha">${diaMes(s.f)}</span>
+        ${rango ? `<span class="rango rango--mini" style="--rango:${COLOR_RANGO[rango]}">${rango}</span>` : ""}
+        <span class="sesion__meta">${miles(s.volumen)} kg · ${s.minutos || "—"} min${
+          huboFallo ? ` · <span class="etq-fallo">Fallo</span>` : ""}</span>
+      </button>
+      ${abierta ? `
+        <div class="sesion__detalle">
+          <table class="tabla">
+            <tr><th>Ejercicio</th><th>Carga</th><th>Series</th></tr>
+            ${s.filas.filter(f => f.series > 0).map(f => `
+              <tr>
+                <td>${esc(f.nombre)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td>
+                <td>${f.kg} kg</td>
+                <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td>
+              </tr>`).join("")}
+          </table>
+          <p class="vt__pie">${miles(xp)} XP aprox. · ${s.series} series</p>
+        </div>` : ""}`;
+  };
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">Historial</div>
+      <h2 class="mision__tit">${sesiones.length} sesión${sesiones.length === 1 ? "" : "es"}</h2>
+      <div class="mision__lema">Todo lo entrenado, semana a semana</div>
+    </div>
+    ${semanas.map(sem => {
+      const lista = porSemana.get(sem);
+      const abierta = semanasAbiertas.has(sem);
+      return `
+      <div class="vt">
+        <button class="vt__cab vt__cab--toggle" data-semana="${sem}">
+          <span>Semana ${sem}</span>
+          <span>${lista.length} sesión${lista.length === 1 ? "" : "es"} ${abierta ? "▾" : "▸"}</span>
+        </button>
+        ${abierta ? `<div class="sesiones">${lista.map(filaSesion).join("")}</div>` : ""}
+      </div>`;
+    }).join("")}`;
+}
+
+/* ============================================================
    MAPA DE CONSTANCIA
    La racha da un número; esto da la forma: dónde se rompió y cuánto
    duró. Escala secuencial de un solo tono, de claro a oscuro, con los
@@ -1513,6 +1604,7 @@ function pintar() {
   pintarCabecera();
   pintarNav();
   if (vista === "logros") pintarLogros();
+  else if (vista === "historial") pintarHistorial();
   else if (vista === "perfil") pintarPerfil();
   else if (vista === "manual") pintarManual();
   else if (vista === "ejercicio") pintarEjercicio();
@@ -2088,6 +2180,17 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; pintar(); arriba(); return; }
+  if (b.dataset.semana) {
+    const sem = +b.dataset.semana;
+    if (semanasAbiertas.has(sem)) semanasAbiertas.delete(sem); else semanasAbiertas.add(sem);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.sesion) {
+    sesionAbierta = sesionAbierta === b.dataset.sesion ? null : b.dataset.sesion;
+    repintarQuieto();
+    return;
+  }
   if (b.dataset.ficha) {
     ejercicioActivo = b.dataset.ficha;
     puntoSel = { tipo: null, i: null };
