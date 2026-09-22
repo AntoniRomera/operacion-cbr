@@ -1,6 +1,6 @@
 # 008 — Ficha de ejercicio rica y glosario de músculos (PWA)
 
-**Estado:** acordada
+**Estado:** implementada
 **Fecha:** 2026-09-21     **Autor:** Toni + Claude
 **Parte de:** [[006-plan-nuevas-funcionalidades]] — bloque A, segundo corte
 

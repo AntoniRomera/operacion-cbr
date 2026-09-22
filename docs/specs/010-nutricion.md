@@ -1,6 +1,6 @@
 # 010 — Nutrición (bloque B)
 
-**Estado:** acordada
+**Estado:** implementada
 **Fecha:** 2026-09-21     **Autor:** Toni + Claude
 **Parte de:** [[006-plan-nuevas-funcionalidades]] — bloque B, el último del plan
 
@@ -709,3 +709,13 @@ Sintaxis de `js/app.js` y `datos/nutricion.js` verificada completa.
 **Sin probar en el navegador** — ni la nueva vista, ni el colapsado
 por día, ni el filtro por tipo de comida. `sw.js` subido a
 `sistema-v45`.
+
+## Verificación final en el móvil real (2026-09-22)
+
+Toni actualizó su instancia real con `sistema-v50` (commit `75d1369`,
+comprobado con el procedimiento de backup + comparar nº de series
+antes/después). **Confirmado: "Funciono, no perdí nada."** La
+migración de esquema (`alimentos`/`nutricion` nuevos), el commit
+completo de equipo configurable + ficha rica + cardio + nutrición +
+rediseño de UI, quedan verificados en producción, no solo en lógica.
+Specs 007/008/009/010 pasan de "acordada" a "implementada".

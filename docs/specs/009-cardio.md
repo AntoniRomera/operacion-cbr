@@ -1,6 +1,6 @@
 # 009 — Cardio suelto (sombra de boxeo, juego de pies, comba)
 
-**Estado:** acordada
+**Estado:** implementada
 **Fecha:** 2026-09-21     **Autor:** Toni + Claude
 **Parte de:** [[006-plan-nuevas-funcionalidades]] — bloque C
 
