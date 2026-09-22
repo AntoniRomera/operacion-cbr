@@ -1,6 +1,6 @@
 # 004 — Vista de historial de sesiones
 
-**Estado:** acordada
+**Estado:** implementada
 **Fecha:** 2026-09-18     **Autor:** Toni + Claude
 
 ## Problema

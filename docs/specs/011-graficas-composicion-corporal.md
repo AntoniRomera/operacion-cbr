@@ -1,6 +1,7 @@
 # 011 — Gráficas de composición corporal y su cruce con la constancia
 
-**Estado:** acordada — sin implementar, para cuando le toque el turno
+**Estado:** implementada — puntos 1 y 2; el punto 3 (cruce con
+constancia) se deja tal como estaba en Perfil, ver Verificación
 **Fecha:** 2026-09-21     **Autor:** Toni + Claude
 **Parte de:** [[010-nutricion]] (el % de grasa ya es un campo del perfil desde esa spec)
 
@@ -74,5 +75,37 @@ deshacer, revertir el commit.
 
 ## Verificación
 
-(Pendiente — esta spec se deja acordada pero sin implementar, per
-instrucción explícita de Toni de dejarla en specs para más adelante.)
+**Implementado 2026-09-23**, tras mockups aprobados (artifact
+`4xnTYmGgz6gif7GQDXKYd4`):
+
+- **Decisiones abiertas resueltas**: el editor de % de grasa vive
+  junto al de Perfil → Nutrición (`grasaCorporalHTML()`, justo debajo
+  de `corporalHTML()`) — la primera pregunta. Interpolación: **valor
+  más cercano en el tiempo** (`N.composicionCorporal()`), no lineal —
+  más simple y más honesto que fabricar un punto intermedio
+  calculado. Cruce con constancia: **no se ha movido nada** — el mapa
+  de constancia se queda donde estaba en Perfil, sin fusionar con
+  esta gráfica; era la parte más arriesgada de la spec y no hacía
+  falta para lo que Toni pidió en los mockups.
+- **`E.grasaCorporal`** (array `{f, pct}`, mismo patrón que
+  `E.corporal`) con su propio editor (`data-grasa`/`anotarGrasa`,
+  mismo patrón que peso). El campo suelto `nutri.perfil.grasaPct` que
+  existía desde la spec 010 se elimina — ahora se deriva en vivo de
+  `grasaActual()` (último apunte del historial), sin dos fuentes de
+  verdad que sincronizar a mano.
+- **`N.composicionCorporal(historialPeso, historialGrasa)`**: cruza
+  ambos historiales por fecha más cercana, calcula masa grasa/magra
+  estimada. Verificado con `osascript` con datos plausibles (peso
+  122→116 kg, grasa 24→20,5% en fechas sueltas): cada fecha de peso
+  coge el % de grasa real más próximo, sin inventar ninguno.
+- **`graficaComposicionHTML()`**: SVG propio de dos líneas (no la
+  `grafica()` interactiva existente, pensada para una sola serie) —
+  usa `colorDe()` para los hex reales de `--sis`/`--sis2`, no
+  `var(--x)` dentro de atributos SVG (ya documentado en el propio
+  código que eso no se resuelve ahí).
+
+Sintaxis de `js/app.js` y `datos/nutricion.js` verificada completa;
+CSS balanceado (471/471). **Sin probar en el navegador** — el
+recálculo del objetivo al anotar grasa, la gráfica combinada con
+datos reales, nada de esto se ha visto en pantalla todavía. `sw.js`
+subido a `sistema-v51`.

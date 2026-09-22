@@ -652,12 +652,47 @@ todo lo que toca datos persistentes esta sesión —
 **Sin probar en el navegador.** Nada de esta sesión está commiteado
 ni desplegado todavía — a la espera de que lo pidas explícitamente.
 
-## Pendiente — no tocado, a propósito
+## Implementado 2026-09-23 — resto de contenido: lista de la compra y cambiar comida
 
-- **Resto de "contenido"** del plan original (listas de la compra con
-  precio agregado por semana, alternativas por macros parecidos,
-  botón "cambiar comida" con esa lógica): no se ha tocado — Menús +
-  la guía de batch cubren buena parte, se revisa el resto cuando toque.
+Tras los mockups aprobados (artifact `4xnTYmGgz6gif7GQDXKYd4`):
+
+- **Lista de la compra** (`N.listaCompra()` en `datos/nutricion.js`,
+  nuevo panel en Menús): suma los gramos de cada ingrediente de los
+  platos planificados esa semana (contando repeticiones), agrupados
+  por categoría (`N.CATEGORIAS_COMPRA`: proteína/hidratos/verdura y
+  grasa/otros — nuevo campo `categoria` en `ALIMENTOS_BASE`). El
+  precio total es la suma de los precios por ración de los platos
+  planificados — **no hay precio por ingrediente suelto** en el
+  modelo actual, así que cada línea muestra solo cantidad, nunca un
+  precio por línea inventado; el total sí lleva precio, con el mismo
+  aviso de "estimado" de siempre. Verificado con `osascript` contra
+  una semana completa con los 6 platos reales: reproduce casi al
+  gramo las cantidades del prompt original de Toni (980 g arroz,
+  1,4 kg patata, 2,8 kg verdura, 600 g pavo, 400 g merluza — exactos;
+  pollo y huevos con la variación normal de que las raciones de los
+  platos no coinciden gramo a gramo con las bolsas de la compra
+  reales) y ~46 € de total, cerca de los ~44 € del prompt.
+- **Cambiar comida**: botón ⇄ (`N.platosParecidos()`, ±15% de kcal,
+  mismo `tipoComida` si alguno de los dos lo tiene) en la esquina
+  libre de cada tarjeta de "Hoy toca" sin marcar como hecha — abre
+  `.alt-lista` con el plato actual resaltado y las alternativas reales
+  guardadas, reutilizando el `data-menu-asignar` que ya existía para
+  Menús (mismo camino, un solo sitio que sabe reasignar un día).
+  Verificado con `osascript`: "Pavo" (551 kcal) encuentra "Merluza"
+  (515 kcal, dentro del ±15%) pero no "Tortilla de atún" (715 kcal,
+  fuera de rango) — filtra bien, no ofrece cualquier plato del
+  catálogo.
+- Para que el ⇄ y el botón de "marcar hecho" convivan sin anidar un
+  `<button>` dentro de otro (HTML inválido), la tarjeta con plato
+  asignado pasa de ser un único `<button>` a un `<div>` con dos
+  botones dentro: `.cambiar-toque` (la esquina) y
+  `.tarjeta-comida__toque` (el resto, con `all:unset` para no perder
+  el aspecto que ya tenía).
+
+Sintaxis y CSS verificados (balance de llaves correcto). **Sin probar
+en el navegador** — ninguna de las dos piezas se ha visto en pantalla.
+`sw.js` subido a `sistema-v51` (compartido con la spec 011,
+implementadas en el mismo pase).
 
 ## Corrección de rumbo — UI/UX de Nutrición y Perfil
 

@@ -237,19 +237,26 @@ export const PLATOS_SUGERIDOS = [
  * distinto.
  */
 export const ALIMENTOS_BASE = [
-  { id: "base-pechuga-pollo", nombre: "Pechuga de pollo (cruda)", kcal100: 165, proteina100: 31, grasa100: 3.6, carbo100: 0, fuente: "base" },
-  { id: "base-arroz-blanco", nombre: "Arroz blanco (crudo)", kcal100: 365, proteina100: 7, grasa100: 0.7, carbo100: 80, fuente: "base" },
-  { id: "base-avena", nombre: "Avena", kcal100: 379, proteina100: 13, grasa100: 7, carbo100: 67, fuente: "base" },
-  { id: "base-skyr", nombre: "Skyr 0%", kcal100: 63, proteina100: 11, grasa100: 0.2, carbo100: 4, fuente: "base" },
-  { id: "base-platano", nombre: "Plátano", kcal100: 89, proteina100: 1.1, grasa100: 0.3, carbo100: 23, fuente: "base" },
-  { id: "base-huevo", nombre: "Huevo (cocido)", kcal100: 155, proteina100: 13, grasa100: 11, carbo100: 1.1, fuente: "base" },
-  { id: "base-verdura-mixta", nombre: "Verdura mixta (congelada)", kcal100: 35, proteina100: 2.5, grasa100: 0.3, carbo100: 6, fuente: "base" },
-  { id: "base-aove", nombre: "Aceite de oliva virgen extra", kcal100: 884, proteina100: 0, grasa100: 100, carbo100: 0, fuente: "base" },
-  { id: "base-atun-natural", nombre: "Atún al natural (escurrido)", kcal100: 116, proteina100: 26, grasa100: 1, carbo100: 0, fuente: "base" },
-  { id: "base-pavo", nombre: "Solomillo de pavo (crudo)", kcal100: 104, proteina100: 24, grasa100: 1, carbo100: 0, fuente: "base" },
-  { id: "base-merluza", nombre: "Merluza (cruda)", kcal100: 86, proteina100: 17, grasa100: 1.3, carbo100: 0, fuente: "base" },
-  { id: "base-patata", nombre: "Patata (cruda)", kcal100: 77, proteina100: 2, grasa100: 0.1, carbo100: 17, fuente: "base" },
-  { id: "base-manzana", nombre: "Manzana", kcal100: 52, proteina100: 0.3, grasa100: 0.2, carbo100: 14, fuente: "base" }
+  { id: "base-pechuga-pollo", nombre: "Pechuga de pollo (cruda)", kcal100: 165, proteina100: 31, grasa100: 3.6, carbo100: 0, fuente: "base", categoria: "proteina" },
+  { id: "base-arroz-blanco", nombre: "Arroz blanco (crudo)", kcal100: 365, proteina100: 7, grasa100: 0.7, carbo100: 80, fuente: "base", categoria: "hidratos" },
+  { id: "base-avena", nombre: "Avena", kcal100: 379, proteina100: 13, grasa100: 7, carbo100: 67, fuente: "base", categoria: "hidratos" },
+  { id: "base-skyr", nombre: "Skyr 0%", kcal100: 63, proteina100: 11, grasa100: 0.2, carbo100: 4, fuente: "base", categoria: "proteina" },
+  { id: "base-platano", nombre: "Plátano", kcal100: 89, proteina100: 1.1, grasa100: 0.3, carbo100: 23, fuente: "base", categoria: "hidratos" },
+  { id: "base-huevo", nombre: "Huevo (cocido)", kcal100: 155, proteina100: 13, grasa100: 11, carbo100: 1.1, fuente: "base", categoria: "proteina" },
+  { id: "base-verdura-mixta", nombre: "Verdura mixta (congelada)", kcal100: 35, proteina100: 2.5, grasa100: 0.3, carbo100: 6, fuente: "base", categoria: "verdura" },
+  { id: "base-aove", nombre: "Aceite de oliva virgen extra", kcal100: 884, proteina100: 0, grasa100: 100, carbo100: 0, fuente: "base", categoria: "verdura" },
+  { id: "base-atun-natural", nombre: "Atún al natural (escurrido)", kcal100: 116, proteina100: 26, grasa100: 1, carbo100: 0, fuente: "base", categoria: "proteina" },
+  { id: "base-pavo", nombre: "Solomillo de pavo (crudo)", kcal100: 104, proteina100: 24, grasa100: 1, carbo100: 0, fuente: "base", categoria: "proteina" },
+  { id: "base-merluza", nombre: "Merluza (cruda)", kcal100: 86, proteina100: 17, grasa100: 1.3, carbo100: 0, fuente: "base", categoria: "proteina" },
+  { id: "base-patata", nombre: "Patata (cruda)", kcal100: 77, proteina100: 2, grasa100: 0.1, carbo100: 17, fuente: "base", categoria: "hidratos" },
+  { id: "base-manzana", nombre: "Manzana", kcal100: 52, proteina100: 0.3, grasa100: 0.2, carbo100: 14, fuente: "base", categoria: "hidratos" }
+];
+
+export const CATEGORIAS_COMPRA = [
+  { clave: "proteina", nombre: "Proteína" },
+  { clave: "hidratos", nombre: "Hidratos" },
+  { clave: "verdura", nombre: "Verdura y grasa" },
+  { clave: "otros", nombre: "Otros" }
 ];
 
 /**
@@ -271,4 +278,89 @@ export function macrosDePlato(ingredientes, catalogo) {
       carbo: a.carbo + Math.round((al.carbo100 || 0) * f)
     };
   }, { kcal: 0, proteina: 0, grasa: 0, carbo: 0 });
+}
+
+/* ============================================================
+   COMPOSICIÓN CORPORAL (spec 011)
+   ============================================================ */
+
+/**
+ * Cruza el historial de peso con el de % de grasa — casi nunca
+ * coinciden en fecha — para estimar masa grasa/magra en cada fecha de
+ * peso. Usa el % de grasa real más cercano en el tiempo, nunca uno
+ * calculado a medias: si el dato más próximo es de hace tres semanas,
+ * se usa ese, no se inventa un punto intermedio.
+ * Sin historial de grasa, no hay nada que cruzar: devuelve `[]`.
+ */
+export function composicionCorporal(historialPeso, historialGrasa) {
+  if (!historialGrasa?.length || !historialPeso?.length) return [];
+  return historialPeso.map(p => {
+    let mejor = historialGrasa[0], mejorDist = Math.abs(new Date(p.f) - new Date(historialGrasa[0].f));
+    for (const g of historialGrasa) {
+      const dist = Math.abs(new Date(p.f) - new Date(g.f));
+      if (dist < mejorDist) { mejor = g; mejorDist = dist; }
+    }
+    const masaGrasaKg = +(p.kg * mejor.pct / 100).toFixed(1);
+    return { f: p.f, pesoKg: p.kg, grasaPct: mejor.pct, masaGrasaKg, masaMagraKg: +(p.kg - masaGrasaKg).toFixed(1) };
+  });
+}
+
+/* ============================================================
+   LISTA DE LA COMPRA (bloque B, resto de "contenido")
+   ============================================================ */
+
+/**
+ * Suma los ingredientes de los platos planificados esta semana
+ * (contando cuántas veces se repite cada uno), agrupados por
+ * categoría. El precio total es la suma de los precios por ración de
+ * los platos planificados — no hay precio por ingrediente suelto, así
+ * que no se inventa uno; el total ya avisa de que es estimado.
+ */
+export function listaCompra(menuSemanal, platos, catalogo) {
+  const usosPlato = new Map();
+  for (const dia of Object.values(menuSemanal || {})) {
+    for (const claveP of Object.values(dia)) usosPlato.set(claveP, (usosPlato.get(claveP) || 0) + 1);
+  }
+
+  const gramosPorIngrediente = new Map();
+  let precioTotal = 0;
+  for (const [claveP, veces] of usosPlato) {
+    const plato = platos.find(p => p.clave === claveP);
+    if (!plato) continue;
+    precioTotal += (plato.precio || 0) * veces;
+    for (const ing of plato.ingredientes || []) {
+      gramosPorIngrediente.set(ing.alimentoId, (gramosPorIngrediente.get(ing.alimentoId) || 0) + ing.gramos * veces);
+    }
+  }
+
+  const filas = [...gramosPorIngrediente.entries()].map(([id, gramos]) => {
+    const al = catalogo.find(a => a.id === id);
+    return { alimentoId: id, nombre: al?.nombre ?? id, categoria: al?.categoria ?? "otros", gramos: Math.round(gramos) };
+  });
+
+  return { filas, precioTotal: +precioTotal.toFixed(2) };
+}
+
+/** "1620 g" -> "1,6 kg"; deja los gramos tal cual por debajo de 1 kg. */
+export function formatoCantidad(gramos) {
+  return gramos >= 1000 ? `${(gramos / 1000).toFixed(1).replace(".", ",")} kg` : `${gramos} g`;
+}
+
+/* ============================================================
+   CAMBIAR COMIDA (bloque B, resto de "contenido")
+   ============================================================ */
+
+/**
+ * Platos "parecidos" a uno dado: mismo tipo de comida (si alguno de
+ * los dos lo tiene definido) y dentro de ±15% de sus kcal — nunca
+ * cualquier plato del catálogo, aunque esté guardado.
+ */
+export function platosParecidos(plato, todosPlatos, catalogo) {
+  const base = macrosDePlato(plato.ingredientes, catalogo);
+  if (!base.kcal) return [];
+  return todosPlatos
+    .filter(p => p.clave !== plato.clave)
+    .filter(p => !plato.tipoComida || !p.tipoComida || p.tipoComida === plato.tipoComida)
+    .map(p => ({ plato: p, macros: macrosDePlato(p.ingredientes, catalogo) }))
+    .filter(({ macros }) => Math.abs(macros.kcal - base.kcal) <= base.kcal * 0.15);
 }

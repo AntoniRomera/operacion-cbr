@@ -40,10 +40,12 @@ let resultadosBusquedaAlimento = [];   // resultado de buscar en el catálogo de
 let buscadorDestino = "comida";        // "comida" (Nutrición) | "ingrediente" (Menús, plato en construcción)
 let platoDraftIngredientes = [];       // ingredientes del plato que se está montando en Menús
 let guiaBatchAbierta = false;          // guía de batch cooking del domingo, desplegada o no
+let cambiarComidaAbierto = null;       // qué franja de "Hoy toca" tiene el selector de alternativas abierto
 let panelesAbiertos = new Set();       // paneles colapsables abiertos en Nutrición/Menús (spec 010, mejora UI)
 let perfilAbierto = null;              // qué tarjeta de Perfil está abierta — una sola a la vez, con botón atrás
 let cambioTemporal = true;       // el cambio vale solo para hoy
 let pesoBorrador = null;         // peso corporal a medio teclear
+let grasaBorrador = null;        // % de grasa corporal a medio teclear
 let cron = null;                 // cronómetro de isométricos en marcha
 let candado = null;              // bloqueo de apagado de pantalla
 let ejercicioActivo = null;      // ficha de ejercicio abierta
@@ -155,9 +157,12 @@ function nutricionEstado() {
 function recalcularNutricionSiHaceFalta() {
   const nutri = nutricionEstado();
   const peso = pesoActual();
-  if (!N.datosSuficientes({ ...nutri.perfil, pesoKg: peso })) return false;
+  /* El % de grasa viene del historial (E.grasaCorporal), no de un
+     campo aparte que haya que mantener sincronizado a mano. */
+  const perfil = { ...nutri.perfil, grasaPct: grasaActual() ?? undefined };
+  if (!N.datosSuficientes({ ...perfil, pesoKg: peso })) return false;
   if (!N.necesitaRecalculo(peso, nutri.pesoCalculo)) return false;
-  nutri.objetivo = N.objetivoDiario({ ...nutri.perfil, pesoKg: peso });
+  nutri.objetivo = N.objetivoDiario({ ...perfil, pesoKg: peso });
   nutri.pesoCalculo = peso;
   return true;
 }
@@ -394,6 +399,19 @@ const pesoActual = () => {
   const h = E.corporal || [];
   return h.length ? h[h.length - 1].kg : (cazador?.pesoCorporal || 80);
 };
+
+/** % de grasa: el último anotado, o `null` si nunca se ha anotado
+    ninguno — a diferencia del peso, no hay un valor de partida real
+    del que caer, así que no se inventa uno. */
+const grasaActual = () => {
+  const h = E.grasaCorporal || [];
+  return h.length ? h[h.length - 1].pct : null;
+};
+
+/** El valor que se está ajustando, sin guardar todavía — 20% es solo
+    un punto de partida neutro para el mando +/-, nunca se guarda sin
+    pulsar "Anotar hoy". */
+const borradorGrasa = () => grasaBorrador ?? grasaActual() ?? 20;
 
 const escalon = ej => equipo.escalonDe(equipoActivo(), ej.implemento);
 
@@ -1015,6 +1033,26 @@ function pintarNutricion() {
   const menuHoy = nutri.menuSemanal[diaHoy] || {};
   const nombreDiaHoy = N.DIAS_SEMANA.find(d => d.clave === diaHoy)?.nombre ?? diaHoy;
 
+  let altListaHTML = "";
+  if (cambiarComidaAbierto) {
+    const claveActual = menuHoy[cambiarComidaAbierto];
+    const platoActual = claveActual && nutri.platos.find(p => p.clave === claveActual);
+    if (platoActual) {
+      const mActual = N.macrosDePlato(platoActual.ingredientes, catalogo);
+      const parecidos = N.platosParecidos(platoActual, nutri.platos, catalogo);
+      altListaHTML = `<div class="alt-lista">
+          <div class="alt-fila alt-fila--actual">
+            <div><div class="alt-fila__nom">${esc(platoActual.nombre)}</div><div class="alt-fila__meta">${miles(mActual.kcal)} kcal · actual</div></div>
+          </div>
+          ${parecidos.length ? parecidos.map(({ plato: alt, macros }) => `
+            <button class="alt-fila" data-menu-asignar="${diaHoy}|${cambiarComidaAbierto}|${alt.clave}">
+              <div><div class="alt-fila__nom">${esc(alt.nombre)}</div><div class="alt-fila__meta">${miles(macros.kcal)} kcal · ${macros.proteina} g prot</div></div>
+              <span class="alt-fila__accion">Usar</span>
+            </button>`).join("") : `<p class="vt__txt">No hay otro plato parecido guardado (±15% kcal) — crea uno en Menús.</p>`}
+        </div>`;
+    }
+  }
+
   $("app").innerHTML = `
     <div class="mision">
       <div class="mision__cab">Hoy</div>
@@ -1032,8 +1070,8 @@ function pintarNutricion() {
 
     <section class="ej">
       <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Hoy · ${esc(nombreDiaHoy)}</h3>
-        <div class="ej__meta">Lo que tienes planificado — marca lo que te has comido. Planifica la
-        semana en Menús.</div></div></div>
+        <div class="ej__meta">Lo que tienes planificado — marca lo que te has comido, o toca ⇄ para
+        cambiarlo por algo parecido. Planifica la semana en Menús.</div></div></div>
       <div class="tablero-comida">
         ${N.COMIDAS_DIA.map(c => {
           const claveP = menuHoy[c.clave];
@@ -1046,14 +1084,18 @@ function pintarNutricion() {
             </button>`;
           const hechoHoy = hoyFilas.some(f => f.tipo === "comida" && f.slot === c.clave);
           const m = N.macrosDePlato(plato.ingredientes, catalogo);
-          return `<button class="tarjeta-comida ${hechoHoy ? "tarjeta-comida--hecha" : ""}" data-menuhoy-toggle="${c.clave}|${plato.clave}">
-              <span class="tarjeta-comida__ic">${hechoHoy ? "✓" : ""}</span>
-              <span class="tarjeta-comida__slot">${esc(c.nombre)}</span>
-              <span class="tarjeta-comida__nom">${esc(plato.nombre)}</span>
-              <span class="tarjeta-comida__pie">${hechoHoy ? "Hecho · " : ""}${miles(m.kcal)} kcal</span>
-            </button>`;
+          return `<div class="tarjeta-comida ${hechoHoy ? "tarjeta-comida--hecha" : ""}">
+              ${!hechoHoy ? `<button class="cambiar-toque" data-cambiar-comida="${c.clave}" title="Cambiar por algo parecido">⇄</button>` : ""}
+              <button class="tarjeta-comida__toque" data-menuhoy-toggle="${c.clave}|${plato.clave}">
+                <span class="tarjeta-comida__ic">${hechoHoy ? "✓" : ""}</span>
+                <span class="tarjeta-comida__slot">${esc(c.nombre)}</span>
+                <span class="tarjeta-comida__nom">${esc(plato.nombre)}</span>
+                <span class="tarjeta-comida__pie">${hechoHoy ? "Hecho · " : ""}${miles(m.kcal)} kcal</span>
+              </button>
+            </div>`;
         }).join("")}
       </div>
+      ${altListaHTML}
     </section>
 
     <section class="ej">
@@ -1146,6 +1188,7 @@ function pintarMenus() {
   const nuevoPlatoAbierto = panelesAbiertos.has("nuevoplato");
   const diaHoy = N.diaSemanaDe(hoy());
   const totalComidasSemana = Object.values(nutri.menuSemanal).reduce((a, dia) => a + Object.keys(dia).length, 0);
+  const compra = N.listaCompra(nutri.menuSemanal, nutri.platos, catalogo);
 
   $("app").innerHTML = `
     <div class="mision">
@@ -1264,6 +1307,25 @@ function pintarMenus() {
     </section>
 
     <div class="paneles">
+    ${panel("listacompra", "Lista de la compra", compra.filas.length ? `${compra.filas.length} artículos · ~${compra.precioTotal.toFixed(2)} €` : "Nada planificado todavía", `
+      <section class="ej">
+        <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Lista de la compra</h3>
+          <div class="ej__meta">De lo planificado esta semana · precio estimado, no garantizado</div></div></div>
+        ${compra.filas.length ? N.CATEGORIAS_COMPRA.map(cat => {
+          const filas = compra.filas.filter(f => f.categoria === cat.clave);
+          if (!filas.length) return "";
+          return `<div class="compra-grupo">
+              <div class="compra-grupo__nom">${esc(cat.nombre)}</div>
+              ${filas.map(f => `<div class="compra-fila">
+                  <span class="compra-fila__nom">${esc(f.nombre)}<span class="compra-fila__cant">${N.formatoCantidad(f.gramos)}</span></span>
+                </div>`).join("")}
+            </div>`;
+        }).join("") : `<p class="vt__txt">Planifica algún día en "Semana" para ver aquí lo que hace falta comprar.</p>`}
+        ${compra.filas.length ? `<div class="compra-total">
+            <span class="compra-total__nom">Total estimado</span>
+            <span class="compra-total__val">${compra.precioTotal.toFixed(2)} €</span>
+          </div>` : ""}
+      </section>`)}
     <button class="sesion ${guiaBatchAbierta ? "sesion--abierta" : ""}" data-guiabatch="1">
       <span class="sesion__dia">Guía de batch cooking · domingo</span>
       <span class="sesion__meta">${guiaBatchAbierta ? "Ocultar" : "Ver pasos, nevera y congelador"}</span>
@@ -2161,6 +2223,69 @@ function corporalHTML() {
     </div>`;
 }
 
+/**
+ * Gráfica de dos líneas (peso, masa grasa estimada) para cruzar la
+ * evolución del peso con la de la composición corporal — SVG propio,
+ * sin las anotaciones interactivas de `grafica()` (esto es un
+ * resumen, no una serie con puntos que se puedan tocar uno a uno).
+ */
+function graficaComposicionHTML(puntos) {
+  const W = 290, H = 120, IZQ = 10, DER = 10, ARR = 10, ABA = 6;
+  const anchoUtil = W - IZQ - DER, altoUtil = H - ARR - ABA;
+  const pesos = puntos.map(p => p.pesoKg), grasas = puntos.map(p => p.masaGrasaKg);
+  const todos = [...pesos, ...grasas];
+  let min = Math.min(...todos), max = Math.max(...todos);
+  if (max === min) max += 1;
+  const margen = (max - min) * 0.1;
+  const y0 = min - margen, y1 = max + margen;
+  const ejeY = v => ARR + (1 - (v - y0) / (y1 - y0)) * altoUtil;
+  const ejeX = i => puntos.length === 1 ? IZQ + anchoUtil / 2 : IZQ + anchoUtil * i / (puntos.length - 1);
+  const linea = (vals, color, punteada) => {
+    const pts = vals.map((v, i) => `${ejeX(i).toFixed(1)},${ejeY(v).toFixed(1)}`).join(" ");
+    return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="${punteada ? 2 : 2.5}"
+      ${punteada ? `stroke-dasharray="4 3"` : ""} stroke-linecap="round" stroke-linejoin="round"/>`;
+  };
+  const primero = puntos[0], ultimo = puntos[puntos.length - 1];
+  const cSis = colorDe("--sis"), cSis2 = colorDe("--sis2"), cLinea = colorDe("--linea");
+
+  return `<div class="grafica-combo">
+      <svg viewBox="0 0 ${W} ${H}">
+        <line x1="${IZQ}" y1="${ARR}" x2="${IZQ}" y2="${H - ABA}" stroke="${cLinea}" stroke-width="1"/>
+        <line x1="${IZQ}" y1="${H - ABA}" x2="${W - DER}" y2="${H - ABA}" stroke="${cLinea}" stroke-width="1"/>
+        ${linea(pesos, cSis, false)}
+        ${linea(grasas, cSis2, true)}
+      </svg>
+      <div class="grafica-combo__leyenda">
+        <span><i style="background:${cSis}"></i>Peso · ${primero.pesoKg} → ${ultimo.pesoKg} kg</span>
+        <span><i style="background:${cSis2}"></i>Masa grasa est. · ${primero.masaGrasaKg} → ${ultimo.masaGrasaKg} kg</span>
+      </div>
+    </div>`;
+}
+
+function grasaCorporalHTML() {
+  const h = E.grasaCorporal || [];
+  const actual = borradorGrasa();
+  const sinGuardar = grasaBorrador !== null && grasaBorrador !== grasaActual();
+  const cruce = N.composicionCorporal(E.corporal || [], h);
+
+  return `<div class="vt">
+      <div class="vt__cab">% de grasa corporal</div>
+      <p class="vt__txt">Opcional — en cuanto lo anotas, el cálculo de objetivo pasa de Mifflin-St
+      Jeor a Katch-McArdle (más preciso con buena masa muscular). Se anota menos a menudo que el
+      peso: los días sin apunte usan el último dato real, nunca uno inventado.</p>
+      <div class="corporal">
+        <button class="mini" data-grasa="-1">−</button>
+        <span class="corporal__val">${actual}<small>%</small></span>
+        <button class="mini" data-grasa="1">+</button>
+        <button class="btn ${sinGuardar || !h.length ? "btn--go" : ""}" id="anotarGrasa">Anotar hoy</button>
+      </div>
+      ${cruce.length >= 2
+        ? graficaComposicionHTML(cruce)
+        : `<p class="vt__pie">Con un apunte de grasa y dos de peso en días distintos aparece la
+           gráfica cruzada.</p>`}
+    </div>`;
+}
+
 /* ============================================================
    PERFIL
    ============================================================ */
@@ -2225,10 +2350,11 @@ function pintarPerfil() {
       subtitulo: nutri.objetivo ? `${miles(nutri.objetivo.kcal)} kcal objetivo` : "Sin configurar",
       contenido: `
         ${corporalHTML()}
+        ${grasaCorporalHTML()}
         <div class="vt">
-          <p class="vt__txt">Edad, altura y % de grasa son opcionales. Con el % de grasa ya no hacen
-          falta las otras dos (Katch-McArdle, más preciso con buena masa muscular); sin él, hacen falta
-          edad y altura (Mifflin-St Jeor). El objetivo se recalcula solo si el peso se mueve ±3 kg.</p>
+          <p class="vt__txt">Edad y altura son opcionales — hacen falta para Mifflin-St Jeor a menos
+          que ya hayas anotado un % de grasa arriba (entonces se usa Katch-McArdle, más preciso). El
+          objetivo se recalcula solo si el peso o el % de grasa cambian.</p>
 
           <p class="vt__pie">Sexo</p>
           <div class="tema">
@@ -2252,8 +2378,6 @@ function pintarPerfil() {
             <input id="nutriEdad" type="number" inputmode="numeric" min="10" max="100" placeholder="años" value="${nutri.perfil.edad ?? ""}"></label>
           <label class="campo"><span>Altura · opcional</span>
             <input id="nutriAltura" type="number" inputmode="numeric" min="100" max="230" placeholder="cm" value="${nutri.perfil.alturaCm ?? ""}"></label>
-          <label class="campo"><span>% de grasa corporal · opcional</span>
-            <input id="nutriGrasa" type="number" step="0.5" inputmode="decimal" min="3" max="60" placeholder="opcional" value="${nutri.perfil.grasaPct ?? ""}"></label>
           <button class="btn" id="guardarNutriPerfil">Guardar datos</button>
 
           ${nutri.objetivo ? `
@@ -3173,7 +3297,7 @@ document.addEventListener("click", async e => {
     pintar(); arriba();
     return;
   }
-  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; perfilAbierto = null; pintar(); arriba(); return; }
+  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; perfilAbierto = null; cambiarComidaAbierto = null; pintar(); arriba(); return; }
   if (b.dataset.semana) {
     const sem = +b.dataset.semana;
     if (semanasAbiertas.has(sem)) semanasAbiertas.delete(sem); else semanasAbiertas.add(sem);
@@ -3312,15 +3436,33 @@ document.addEventListener("click", async e => {
   }
   if (b.id === "guardarNutriPerfil") {
     const perfil = nutricionEstado().perfil;
-    const edad = +($("nutriEdad")?.value || 0), altura = +($("nutriAltura")?.value || 0), grasa = +($("nutriGrasa")?.value || 0);
+    const edad = +($("nutriEdad")?.value || 0), altura = +($("nutriAltura")?.value || 0);
     perfil.edad = edad > 0 ? edad : undefined;
     perfil.alturaCm = altura > 0 ? altura : undefined;
-    perfil.grasaPct = grasa > 0 ? grasa : undefined;
     nutricionEstado().pesoCalculo = null;          // fuerza el recálculo aunque el peso no se haya movido
     recalcularNutricionSiHaceFalta();
     await guardar();
     repintarQuieto();
     aviso(nutricionEstado().objetivo ? "Objetivo actualizado" : "Guardado — faltan datos para calcular el objetivo");
+    return;
+  }
+  if (b.dataset.grasa) {
+    const paso = +b.dataset.grasa * 0.5;
+    grasaBorrador = Math.max(3, Math.min(60, +(borradorGrasa() + paso).toFixed(1)));
+    repintarQuieto();
+    return;
+  }
+  if (b.id === "anotarGrasa") {
+    const pct = borradorGrasa();
+    E.grasaCorporal = (E.grasaCorporal || []).filter(p => p.f !== hoy());
+    E.grasaCorporal.push({ f: hoy(), pct });
+    E.grasaCorporal.sort((a, b) => a.f.localeCompare(b.f));
+    grasaBorrador = null;
+    nutricionEstado().pesoCalculo = null;          // fuerza el recálculo: cambia la fórmula (Katch-McArdle)
+    recalcularNutricionSiHaceFalta();
+    await guardar();
+    pintar();
+    aviso(`% de grasa anotado · ${pct}%`);
     return;
   }
   if (b.dataset.suplementoAnadir) {
@@ -3418,6 +3560,11 @@ document.addEventListener("click", async e => {
     repintarQuieto();
     return;
   }
+  if (b.dataset.cambiarComida) {
+    cambiarComidaAbierto = cambiarComidaAbierto === b.dataset.cambiarComida ? null : b.dataset.cambiarComida;
+    repintarQuieto();
+    return;
+  }
   if (b.dataset.menucelda) {
     menuCeldaAbierta = menuCeldaAbierta === b.dataset.menucelda ? null : b.dataset.menucelda;
     repintarQuieto();
@@ -3440,6 +3587,7 @@ document.addEventListener("click", async e => {
     if (!nutri.menuSemanal[dia]) nutri.menuSemanal[dia] = {};
     nutri.menuSemanal[dia][comida] = platoClave;
     menuCeldaAbierta = null;
+    cambiarComidaAbierto = null;
     await guardar();
     repintarQuieto();
     return;
