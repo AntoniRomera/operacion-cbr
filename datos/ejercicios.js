@@ -35,7 +35,16 @@ export const EJERCICIOS = {
       "La barra baja a la parte baja del pecho, no al cuello.",
       "Codos a unos 45º del torso, no abiertos en cruz.",
       "!Pins a la altura del pecho y sin collarines. Siempre."
-    ]
+    ],
+    dondeNotarlo: "El pecho estirándose abajo del todo, y el tríceps apretando al final del recorrido.",
+    senalesMal: "Si notas el hombro por delante (no el pecho), los codos se están abriendo demasiado.",
+    errores: [
+      { error: "Rebotar la barra en el pecho", arreglo: "Para un instante abajo, controla la bajada." },
+      { error: "Codos en cruz a 90º", arreglo: "Ciérralos a unos 45º del torso." },
+      { error: "Culo despegado del banco", arreglo: "Aprieta glúteo y pies en el suelo para no perder el arco." }
+    ],
+    variantes: { facil: "Banca con mancuernas, más rango de movimiento del hombro", dificil: "Banca con pausa 2s (bancap)" },
+    rir: "1-2"
   },
   bancap: {
     nombre: "Banca con pausa 2s", grupo: "Pecho", patron: "Empuje horizontal",
@@ -92,7 +101,16 @@ export const EJERCICIOS = {
       "Aprieta las axilas: dorsal activo, barra que no se aleja.",
       "Empuja el suelo con los pies, no tires con la espalda.",
       "!Si la lumbar se redondea, la serie ha terminado."
-    ]
+    ],
+    dondeNotarlo: "Isquios y glúteo tirando desde el suelo; la espalda baja aguanta rígida, no hace el trabajo.",
+    senalesMal: "Si notas la zona lumbar antes que la pierna, la cadera está subiendo antes que los hombros.",
+    errores: [
+      { error: "Cadera sube antes que los hombros", arreglo: "Empuja el suelo con los pies, no tires con la espalda." },
+      { error: "Barra se aleja de la espinilla", arreglo: "Aprieta las axilas antes de tirar, dorsal activo todo el recorrido." },
+      { error: "Lumbar se redondea", arreglo: "Baja el peso — la técnica manda sobre el número." }
+    ],
+    variantes: { facil: "Peso muerto rumano (rdl), menos rango y menos técnica", dificil: "Déficit (de pie sobre un disco)" },
+    rir: "1-2"
   },
   pendlay: {
     nombre: "Remo Pendlay", grupo: "Espalda", patron: "Tirón horizontal",
@@ -103,7 +121,16 @@ export const EJERCICIOS = {
       "Tira hacia el ombligo, codos hacia atrás.",
       "Cada rep arranca desde el suelo, parada completa.",
       "Sin balanceo de cadera: si necesitas impulso, sobra peso."
-    ]
+    ],
+    dondeNotarlo: "La espalda media, entre los omóplatos, apretando al final de cada tirón.",
+    senalesMal: "Si notas la lumbar cargándose, el torso se está enderezando en vez de quedarse quieto.",
+    errores: [
+      { error: "Balanceo de cadera para impulsar la barra", arreglo: "Baja el peso hasta que salga sin impulso." },
+      { error: "Torso se levanta durante la serie", arreglo: "Fija el ángulo del torso antes de la primera rep y no lo sueltes." },
+      { error: "Tirar con el brazo en vez del codo", arreglo: "Piensa en llevar el codo atrás, no en subir la mano." }
+    ],
+    variantes: { facil: "Remo con mancuerna a una mano, apoyado en banco", dificil: "Pendlay con pausa arriba" },
+    rir: "1-2"
   },
   negdom: {
     nombre: "Negativas de dominada", grupo: "Espalda", patron: "Tirón vertical",
@@ -149,7 +176,20 @@ export const EJERCICIOS = {
       "Rompe con cadera y rodilla a la vez, rodillas hacia fuera.",
       "Baja hasta donde la lumbar aguante neutra.",
       "!Pins a la altura del punto más bajo, sin excepción."
-    ]
+    ],
+    dondeNotarlo: "El cuádriceps al bajar y el glúteo al subir, sobre todo cerca del punto más bajo.",
+    senalesMal: "Si notas la rodilla (no el muslo) o la zona lumbar antes que la pierna, revisa profundidad y ritmo.",
+    errores: [
+      { error: "Rodillas se cierran hacia dentro", arreglo: "Empuja las rodillas hacia fuera, en la línea de los pies." },
+      { error: "Talones se levantan", arreglo: "Reparte el peso en todo el pie, no solo en la puntera." },
+      { error: "Bajar más de lo que aguanta la lumbar neutra", arreglo: "Corta el rango donde la zona baja empiece a redondearse." }
+    ],
+    variantes: {
+      facil: "Sentadilla a la caja, controla la profundidad",
+      dificil: "Sentadilla con pausa 2s abajo",
+      alternativaRodilla: "Hip thrust (hip) o belt squat — quitan la carga axial de la rodilla y la columna"
+    },
+    rir: "1-2"
   },
   rdl: {
     nombre: "Peso muerto rumano", grupo: "Piernas", patron: "Bisagra de cadera",
@@ -171,7 +211,20 @@ export const EJERCICIOS = {
       "Pie delantero lo bastante adelante para que la rodilla no se pase.",
       "Baja vertical, el peso en el talón delantero.",
       "Barra sobre el trapecio como en sentadilla, no en los hombros."
-    ]
+    ],
+    dondeNotarlo: "El cuádriceps y el glúteo de la pierna delantera; la trasera apenas empuja, solo mantiene el equilibrio.",
+    senalesMal: "Si notas la rodilla delantera por delante de la puntera del pie, el pie está demasiado atrás.",
+    errores: [
+      { error: "Rodilla delantera se adelanta al pie", arreglo: "Adelanta el pie delantero hasta que la rodilla quede sobre el tobillo." },
+      { error: "Empujar con la pierna trasera", arreglo: "Apoya menos peso en el pie de atrás, es solo equilibrio." },
+      { error: "Rebote abajo para salir más fácil", arreglo: "Controla la bajada y sube sin impulso." }
+    ],
+    variantes: {
+      facil: "Búlgara sin barra, solo con el peso corporal",
+      dificil: "Búlgara con mancuernas a los lados en vez de barra en la espalda",
+      alternativaRodilla: "Hip thrust (hip) — mismo glúteo, sin flexión de rodilla bajo carga"
+    },
+    rir: "1-2"
   },
   hip: {
     nombre: "Hip thrust", grupo: "Piernas", patron: "Extensión de cadera",
@@ -206,6 +259,29 @@ export const EJERCICIOS = {
       "Mejor con las punteras sobre un disco para más rango."
     ]
   },
+  abduccion: {
+    nombre: "Abducción de cadera tumbado", grupo: "Piernas", patron: "Aislamiento",
+    implemento: "corporal", factorPeso: 0.15,
+    musculos: ["Glúteo medio", "Abductores"],
+    claves: [
+      "Tumbado de lado, cadera y rodillas en línea, piernas algo flexionadas.",
+      "Sube la pierna de arriba sin rotar la cadera hacia atrás.",
+      "Baja controlado, sin dejarla caer de golpe.",
+      "Si notas la zona lumbar antes que el glúteo, baja el rango."
+    ]
+  },
+  beltsquat: {
+    nombre: "Belt squat", grupo: "Piernas", patron: "Rodilla dominante",
+    implemento: "beltsquat", kgInicial: 20, incremento: 4,
+    musculos: ["Glúteo", "Cuádriceps"],
+    claves: [
+      "Cinturón a la altura de la cadera, carga colgando entre las piernas.",
+      "Postura algo más ancha que la sentadilla normal, para cargar más el glúteo.",
+      "Baja como en sentadilla, sin peso sobre la columna.",
+      "Rodillas hacia fuera, talones clavados al suelo.",
+      "Buena alternativa a la sentadilla con barra si la lumbar pide descanso."
+    ]
+  },
 
   /* ---------- hombro ---------- */
   militar: {
@@ -217,7 +293,16 @@ export const EJERCICIOS = {
       "Barra parte del pecho alto, no de la barbilla.",
       "Aparta la cara y pasa la barra pegada, no en arco.",
       "Arriba, cabeza cruzando entre los brazos."
-    ]
+    ],
+    dondeNotarlo: "El hombro delantero empujando y el tríceps al final; el abdomen apretado sosteniendo el tronco.",
+    senalesMal: "Si notas la zona lumbar arqueándose para ayudar a subir la barra, sobra peso.",
+    errores: [
+      { error: "Arquear la espalda para pasar la barra", arreglo: "Aprieta glúteo y abdomen antes de empujar; baja el peso si hace falta arquear." },
+      { error: "La barra se aleja de la cara al subir", arreglo: "Aparta la cara hacia atrás justo lo necesario, pásala pegada." },
+      { error: "Empezar desde la barbilla", arreglo: "Arranca desde el pecho alto, no más arriba." }
+    ],
+    variantes: { facil: "Press landmine unilateral (presslm), más amable con el hombro", dificil: "Press militar con pausa en el pecho" },
+    rir: "1-2"
   },
   presslm: {
     nombre: "Press landmine unilateral", grupo: "Hombros", patron: "Empuje vertical",

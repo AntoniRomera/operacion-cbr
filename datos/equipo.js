@@ -1,45 +1,55 @@
 /* ============================================================
    INVENTARIO Y CARGAS
-   Esto es lo que hay en casa. Cambia los números de aquí y toda
-   la app se recalcula sola: las cargas posibles, los saltos de
-   peso y el dibujo de la barra.
+   El inventario ya no es una constante fija: vive por cazador, en
+   E.equipo (ver spec 007), y se edita desde Perfil. Aquí solo quedan
+   las FORMAS (qué pinta tiene un inventario) y los cálculos puros —
+   cargas de barra, escalones — que reciben ese inventario como
+   parámetro. `configDefecto()` es la semilla: lo que Toni tiene hoy,
+   activo; belt squat y bandas, ya en el catálogo pero desactivados
+   hasta que existan de verdad.
 
-   Nada de listas escritas a mano: las combinaciones se resuelven
-   probando todos los repartos posibles de bumpers entre los dos
-   lados (729 repartos con seis bumpers) y, sobre cada uno, todas
-   las combinaciones de pares de fraccionales (16 con cuatro pares).
-   Se hace al arrancar y no se nota.
+   Nada de listas escritas a mano en los cálculos: las combinaciones de
+   barra se resuelven probando todos los repartos posibles de bumpers
+   entre los dos lados y, sobre cada uno, todas las combinaciones de
+   pares de fraccionales. Se hace al entrar a un día y no se nota.
    ============================================================ */
 
-export const BARRA = { nombre: "Barra olímpica", kg: 20 };
+/** Categorías de equipo que la app sabe nombrar, aunque no estén
+ * activas — para el editor de Perfil, en este orden. */
+export const CATEGORIAS_EQUIPO = [
+  /* "Barra olímpica" es una etiqueta que se gana, no un nombre fijo:
+     solo se llama así si pesa 20 kg de verdad — lo resuelve
+     `equipoCategoriasHTML` en app.js, este nombre es solo el respaldo. */
+  { clave: "barra",     nombre: "Barra" },
+  { clave: "discos",    nombre: "Discos y fraccionales" },
+  { clave: "landmine",  nombre: "Landmine" },
+  { clave: "mancuerna", nombre: "Mancuernas" },
+  { clave: "banda",     nombre: "Bandas elásticas" },
+  { clave: "beltsquat", nombre: "Belt squat" }
+];
 
-/* Bumpers, uno por entrada. Hay dos de 5 kg. Todos de 450 mm de
-   diámetro: lo que cambia con el peso es el grosor, no el diámetro. */
-export const DISCOS = [25, 20, 15, 10, 5, 5];
-
-/* Fraccionales FitnessTech por pares (uno a cada lado, para afinar sin
-   descuadrar la barra). No son de acero: son bumper también, solo que
-   pequeños. Con estos cuatro pares se cubre cualquier entero de 0 a
-   10 kg por encima de lo que pongan los bumpers. */
-export const FRACCIONALES = [0.5, 1, 1.5, 2];
-
-/* Mancuernas hexagonales fijas: por ahora solo el par de 5 kg. El de
-   8 kg se compra más adelante — no se ofrece hasta que exista. Son de
-   peso fijo: en ellas se progresa por reps, nunca proponiéndoles kilos. */
-export const MANCUERNAS = [5];
-
-/* Elásticos: todavía no hay ninguno en casa. Cuando lleguen, se listan
-   aquí por su resistencia equivalente en kg y "banda" ya funciona como
-   implemento en el catálogo sin tocar nada más. */
-export const BANDAS = [];
+/** El inventario real de Toni hoy, todo activo — la semilla de un
+ * cazador nuevo. Belt squat y bandas quedan en el catálogo pero
+ * desactivadas: existen como tipo, no hay que darlas de alta a mano
+ * para desactivarlas. */
+export function configDefecto() {
+  return {
+    barra: { activo: true, kg: 20 },
+    discos: { activo: true, pesos: [25, 20, 15, 10, 5, 5], fraccionales: [0.5, 1, 1.5, 2] },
+    landmine: { activo: true },
+    mancuerna: { activo: true, pesos: [5] },
+    banda: { activo: false, pesos: [] },
+    beltsquat: { activo: false }
+  };
+}
 
 /* Grosores asumidos para el aviso de manguito lleno (no hay dato real
    de fábrica): 30 mm por bumper, cualquiera que sea su peso, y menos
    por fraccional al ser mucho más finos. 410 mm es lo útil del manguito
-   antes del collarín. */
-export const GROSOR_BUMPER_MM = 30;
-export const GROSOR_FRACCIONAL_MM = 8;
-export const MANGUITO_UTIL_MM = 410;
+   antes del collarín. Son hechos físicos de la barra, no inventario. */
+const GROSOR_BUMPER_MM = 30;
+const GROSOR_FRACCIONAL_MM = 8;
+const MANGUITO_UTIL_MM = 410;
 
 /* Colores oficiales de competición. Los usa el dibujo de la barra.
    Diámetro (alto) igual para los cinco bumpers; el ancho sí decrece
@@ -63,7 +73,7 @@ export const COLOR_DISCO = {
 /* ---------- resolver de cargas de barra ---------- */
 
 /** Todos los subconjuntos de una lista (incluido el vacío). Con cuatro
- * fraccionales son 16; nada que no se pueda hacer al arrancar. */
+ * fraccionales son 16; nada que no se pueda hacer al entrar a un día. */
 function subconjuntos(pesos) {
   let out = [[]];
   for (const p of pesos) out = out.concat(out.map(s => [...s, p]));
@@ -106,8 +116,8 @@ function repartosBumper(discos, barra) {
  * y se queda con el mejor candidato por total: primero que quepa en
  * el manguito, y si hay empate, el de menos discos.
  */
-function resolverBarra(discos = DISCOS, fraccionales = FRACCIONALES, barra = BARRA.kg) {
-  const bases = repartosBumper(discos, barra);
+function resolverBarraDesde(discos, fraccionales, barraKg) {
+  const bases = repartosBumper(discos, barraKg);
   const pares = subconjuntos(fraccionales);
   const mejorQue = (a, b) => a.cabe !== b.cabe
     ? a.cabe
@@ -134,8 +144,8 @@ function resolverBarra(discos = DISCOS, fraccionales = FRACCIONALES, barra = BAR
   return [...combos.values()].sort((a, b) => a.total - b.total);
 }
 
-/** Sumas posibles con cualquier combinación de bumpers (disco suelto, landmine). */
-function sumasPosibles(discos = DISCOS) {
+/** Sumas posibles con cualquier combinación de bumpers (disco suelto, landmine, belt squat). */
+function sumasPosibles(discos) {
   const set = new Set([0]);
   for (const d of discos) {
     for (const s of [...set]) set.add(s + d);
@@ -143,27 +153,55 @@ function sumasPosibles(discos = DISCOS) {
   return [...set].filter(s => s > 0).sort((a, b) => a - b);
 }
 
-export const CARGAS_BARRA = resolverBarra();
-export const CARGAS_SUELTAS = sumasPosibles();
-export const DISCOS_SUELTOS = [...new Set(DISCOS)].sort((a, b) => a - b);
-export const TOPE_BARRA = CARGAS_BARRA[CARGAS_BARRA.length - 1].total;
+/** Cargas de barra posibles con este inventario — vacío si no hay
+ * barra activa o no hay discos activos para cargarla. */
+export function cargasBarra(config) {
+  if (!config.barra?.activo || !config.discos?.activo) return [];
+  return resolverBarraDesde(config.discos.pesos, config.discos.fraccionales || [], config.barra.kg);
+}
 
-/** Reparto de discos para un peso concreto de barra. */
-export const repartoDe = total => CARGAS_BARRA.find(c => c.total === total) || null;
+/** Sumas posibles con los discos sueltos — vacío si los discos están desactivados. */
+export function cargasSueltas(config) {
+  return config.discos?.activo ? sumasPosibles(config.discos.pesos) : [];
+}
+
+export function discosSueltos(config) {
+  return config.discos?.activo ? [...new Set(config.discos.pesos)].sort((a, b) => a - b) : [];
+}
+
+export function topeBarra(config) {
+  const c = cargasBarra(config);
+  return c.length ? c[c.length - 1].total : 0;
+}
+
+/** Reparto de discos para un peso concreto de barra, para dibujarla. */
+export function repartoDe(config, total) {
+  return cargasBarra(config).find(c => c.total === total) || null;
+}
 
 /**
- * Escalón de pesos disponibles para un ejercicio, según su implemento.
- * Devuelve siempre un array ordenado; el ejercicio guarda su posición.
+ * Escalón de pesos disponibles para un ejercicio, según su implemento
+ * y lo que esté activo en el inventario. Vacío si ese equipo está
+ * desactivado — es la señal que usa `equipoDisponible` para saber si
+ * el ejercicio se puede ofrecer.
  */
-export function escalonDe(implemento) {
+export function escalonDe(config, implemento) {
   switch (implemento) {
-    case "barra":     return CARGAS_BARRA.map(c => c.total);
-    case "landmine":  return CARGAS_SUELTAS;
-    case "disco":     return DISCOS_SUELTOS;
-    case "mancuerna": return MANCUERNAS;
-    case "banda":     return BANDAS;
+    case "barra":     return config.barra?.activo ? cargasBarra(config).map(c => c.total) : [];
+    case "landmine":  return config.landmine?.activo ? cargasSueltas(config) : [];
+    case "disco":     return discosSueltos(config);
+    case "mancuerna": return config.mancuerna?.activo ? (config.mancuerna.pesos || []) : [];
+    case "banda":     return config.banda?.activo ? (config.banda.pesos || []) : [];
+    /* El belt squat se carga con los mismos discos sueltos que landmine. */
+    case "beltsquat": return config.beltsquat?.activo ? cargasSueltas(config) : [];
     default:          return [0];          // peso corporal
   }
+}
+
+/** Si hay equipo suficiente activo para ofrecer este ejercicio. */
+export function equipoDisponible(config, ejercicio) {
+  if (ejercicio.implemento === "corporal") return true;
+  return escalonDe(config, ejercicio.implemento).length > 0;
 }
 
 /**
@@ -173,8 +211,9 @@ export function escalonDe(implemento) {
  * Los porcentajes se redondean al escalón que de verdad puedes montar
  * con tus discos, que es lo único que vas a poner.
  */
-export function aproximacion(kgTrabajo) {
-  const totales = CARGAS_BARRA.map(c => c.total);
+export function aproximacion(config, kgTrabajo) {
+  const totales = cargasBarra(config).map(c => c.total);
+  if (!totales.length) return [];
   const barra = totales[0];
   const vistos = new Set([barra]);
   const series = [{ kg: barra, reps: 8 }];
@@ -187,7 +226,8 @@ export function aproximacion(kgTrabajo) {
   return series;
 }
 
-/** Peso movido de verdad en una serie, para contar volumen y XP. */
+/** Peso movido de verdad en una serie, para contar volumen y XP. No
+ * depende del inventario, solo del implemento del ejercicio. */
 export function cargaReal(ejercicio, kg, pesoCorporal = 80) {
   if (ejercicio.implemento === "corporal") {
     return Math.round(pesoCorporal * (ejercicio.factorPeso ?? 0.6));

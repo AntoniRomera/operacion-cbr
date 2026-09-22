@@ -8,23 +8,40 @@
 import { PROGRAMAS, PROGRAMA_DEFECTO, nucleo, bloques, dia as diaRutina, totalSeries } from "../datos/rutina.js";
 import { EJERCICIOS, ejercicio } from "../datos/ejercicios.js";
 import { MOVILIDAD, XP_MOVILIDAD, esSemanaMovilidad } from "../datos/movilidad.js";
+import { CARDIO, XP_CARDIO } from "../datos/cardio.js";
+import * as N from "../datos/nutricion.js";
 import { LOGO, INSIGNIAS, bloqueDe, rutasSVG } from "../datos/insignias.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
+import { GLOSARIO_MUSCULOS, explicacionDe } from "../datos/musculos.js";
 import * as DB from "./db.js";
 import * as P from "./progreso.js";
+import * as OFF from "./openfoodfacts.js";
 import { buildFigure, animate, stopAnim } from "./figuras.js";
 
 /* ---------- estado en memoria ---------- */
 let cazador = null;          // perfil activo
 let E = null;                // su estado: semana, pesos, sesión a medias
 let filas = [];              // historial ya cargado
+let filasNutricion = [];     // registro de comida/suplementos ya cargado
+let alimentosDB = [];        // catálogo escaneado/manual de Toni (sin los de datos/nutricion.js:ALIMENTOS_BASE)
 let desbloqueados = [];      // ids de logros conseguidos
-let vista = "puerta";        // puerta · misiones · dia · logros · historial · perfil · manual
+let vista = "puerta";        // puerta · misiones · dia · cardio · nutricion · menus · logros · historial · perfil · manual
 let diaActivo = 1;
 let resultadoSesion = null;  // tarjeta de la última sesión cerrada
 let tecnicaAbierta = null;
 let cambioAbierto = null;        // ejercicio con el panel de cambio abierto
+let menuCeldaAbierta = null;     // "dia|comida" con el selector de plato abierto en Menús
+let menuDiaAbierto = null;       // qué día de la semana está desplegado en Menús
+let nuevoPlatoTipo = null;       // tipo de comida elegido en el formulario de "guardar plato"
+let escaneando = false;          // cámara abierta buscando un código de barras
+let streamCamara = null;
+let resultadosBusquedaAlimento = [];   // resultado de buscar en el catálogo de alimentos por nombre
+let buscadorDestino = "comida";        // "comida" (Nutrición) | "ingrediente" (Menús, plato en construcción)
+let platoDraftIngredientes = [];       // ingredientes del plato que se está montando en Menús
+let guiaBatchAbierta = false;          // guía de batch cooking del domingo, desplegada o no
+let panelesAbiertos = new Set();       // paneles colapsables abiertos en Nutrición/Menús (spec 010, mejora UI)
+let perfilAbierto = null;              // qué tarjeta de Perfil está abierta — una sola a la vez, con botón atrás
 let cambioTemporal = true;       // el cambio vale solo para hoy
 let pesoBorrador = null;         // peso corporal a medio teclear
 let cron = null;                 // cronómetro de isométricos en marcha
@@ -34,6 +51,9 @@ let puntoSel = { tipo: null, i: null };   // punto tocado en una gráfica
 let editando = null;             // id de la fila del historial en edición
 let semanasAbiertas = null;      // Set<número de semana> desplegadas en Historial
 let sesionAbierta = null;        // clave "fecha|día" de la sesión abierta en Historial
+let fichaTab = "hacer";          // pestaña activa en la ficha de ejercicio (spec 008)
+let verMusculos = false;         // false = muñeco animado, true = silueta resaltada
+let musculoAbierto = null;       // qué chip de músculo se está explicando ahora mismo
 let motor = "";
 
 const CLAVE_SESION = "sistema:cazador";
@@ -99,6 +119,219 @@ function estimaMinutos(lista) {
 /** El programa que sigue el cazador, con el de defecto como red de seguridad. */
 const programaActivo = () => PROGRAMAS[E?.programa] || PROGRAMAS[PROGRAMA_DEFECTO];
 
+/** El inventario del cazador; si todavía no ha tocado nada (spec 007 es
+    nueva), cae en lo que Toni tiene hoy. No se persiste hasta que edite
+    algo — leer nunca escribe. */
+const equipoActivo = () => E?.equipo || equipo.configDefecto();
+
+/** Si hay equipo suficiente activo para ofrecer este ejercicio ahora mismo. */
+const disponible = ej => equipo.equipoDisponible(equipoActivo(), ej);
+
+/** Catálogo completo de alimentos para calcular platos: los base
+    (`datos/nutricion.js`) más los propios de Toni (escaneados o
+    manuales) — los suyos ganan si repiten id. */
+const catalogoAlimentos = () => {
+  const propios = new Map(alimentosDB.map(a => [a.id, a]));
+  return [...N.ALIMENTOS_BASE.filter(a => !propios.has(a.id)), ...alimentosDB];
+};
+
+/** El perfil nutricional y su objetivo calculado; se persiste solo al
+    guardar cambios — leer nunca escribe. */
+function nutricionEstado() {
+  const n = E.nutricion || (E.nutricion = { perfil: {}, objetivo: null, pesoCalculo: null, suplementos: [], platos: [], menuSemanal: {} });
+  if (!n.perfil) n.perfil = {};
+  if (!n.suplementos) n.suplementos = [];
+  if (!n.platos) n.platos = [];
+  if (!n.menuSemanal) n.menuSemanal = {};
+  return n;
+}
+
+/**
+ * Recalcula el objetivo diario si hace falta (primera vez con datos
+ * suficientes, o el peso se ha movido ±3 kg desde el último cálculo).
+ * Nunca inventa edad, altura o sexo: si faltan, no hace nada. Devuelve
+ * si tocó el estado, para que quien llama decida si hay que guardar.
+ */
+function recalcularNutricionSiHaceFalta() {
+  const nutri = nutricionEstado();
+  const peso = pesoActual();
+  if (!N.datosSuficientes({ ...nutri.perfil, pesoKg: peso })) return false;
+  if (!N.necesitaRecalculo(peso, nutri.pesoCalculo)) return false;
+  nutri.objetivo = N.objetivoDiario({ ...nutri.perfil, pesoKg: peso });
+  nutri.pesoCalculo = peso;
+  return true;
+}
+
+/** Cada día registrado, cumplido o no, contra el objetivo actual — no
+    se guarda un objetivo distinto por día pasado, se compara con el
+    de ahora mismo. */
+function porDiaNutricionCumplido() {
+  const nutri = nutricionEstado();
+  const porDia = new Map();
+  for (const f of filasNutricion) {
+    if (!porDia.has(f.f)) porDia.set(f.f, []);
+    porDia.get(f.f).push(f);
+  }
+  const resultado = new Map();
+  for (const [f, filasDia] of porDia) resultado.set(f, N.diaCumplido(N.totalesDia(filasDia), nutri.objetivo));
+  return resultado;
+}
+
+/** Filas de nutrición de hoy, comida y suplementos. */
+const nutricionHoy = () => filasNutricion.filter(f => f.f === hoy());
+
+/* ---------- captura de alimentos: nombre, código a mano o escáner ----------
+   `buscadorDestino` decide qué hacer al elegir un resultado: rellenar
+   el formulario de comida suelta ("comida") o añadirlo como
+   ingrediente al plato en construcción en Menús ("ingrediente"). */
+function prellenarComidaSuelta(alimento) {
+  if ($("nutriComNombre")) $("nutriComNombre").value = alimento.nombre;
+  if ($("nutriComKcal")) $("nutriComKcal").value = alimento.kcal100 ?? "";
+  if ($("nutriComProteina")) $("nutriComProteina").value = alimento.proteina100 ?? "";
+  if ($("nutriComGrasa")) $("nutriComGrasa").value = alimento.grasa100 ?? "";
+  if ($("nutriComCarbo")) $("nutriComCarbo").value = alimento.carbo100 ?? "";
+}
+
+function elegirAlimento(alimento) {
+  resultadosBusquedaAlimento = [];
+  if (buscadorDestino === "ingrediente") {
+    const gramos = +($("nutriIngGramos")?.value || 0);
+    if (gramos <= 0) { aviso("Pon los gramos antes de elegir el ingrediente"); return; }
+    platoDraftIngredientes.push({ alimentoId: alimento.id, nombre: alimento.nombre, gramos });
+    if ($("nutriIngGramos")) $("nutriIngGramos").value = "";
+    repintarQuieto();
+  } else {
+    repintarQuieto();
+    prellenarComidaSuelta(alimento);
+    aviso(`${alimento.nombre}${alimento.marca ? " · " + alimento.marca : ""} — revisa los macros y pon los gramos`);
+  }
+}
+
+async function buscarYUsarAlimento(codigo) {
+  try {
+    let alimento = catalogoAlimentos().find(a => a.id === codigo);
+    if (!alimento) {
+      const encontrado = await OFF.buscarProducto(codigo);
+      if (!encontrado) { aviso("No se encontró ese código — puedes meterlo a mano"); return; }
+      alimento = encontrado;
+      await DB.alimentos.guardar(alimento);
+      alimentosDB.push(alimento);
+    }
+    elegirAlimento(alimento);
+  } catch (e) {
+    aviso(e.message || "No se pudo consultar Open Food Facts");
+  }
+}
+
+async function iniciarEscaner() {
+  if (escaneando) return;
+  if (!("BarcodeDetector" in window)) { aviso("Este navegador no soporta escanear — escribe el código a mano"); return; }
+  escaneando = true;
+  repintarQuieto();
+  try {
+    streamCamara = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    const video = $("videoEscaner");
+    video.srcObject = streamCamara;
+    await video.play();
+    const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8"] });
+    const bucle = async () => {
+      if (!escaneando) return;
+      try {
+        const codigos = await detector.detect(video);
+        if (codigos.length) { const c = codigos[0].rawValue; pararEscaner(); await buscarYUsarAlimento(c); return; }
+      } catch (e) { /* frame sin código legible esta vez, se sigue */ }
+      if (escaneando) requestAnimationFrame(bucle);
+    };
+    bucle();
+  } catch (e) {
+    escaneando = false;
+    aviso("No se pudo abrir la cámara: " + (e.message || "sin permiso"));
+    repintarQuieto();
+  }
+}
+
+function pararEscaner() {
+  escaneando = false;
+  streamCamara?.getTracks().forEach(t => t.stop());
+  streamCamara = null;
+  repintarQuieto();
+}
+
+/** Buscador reutilizable: nombre (catálogo propio), código a mano, o cámara si el navegador la soporta. */
+function buscadorAlimentoHTML() {
+  const conCamara = "BarcodeDetector" in window;
+  if (escaneando) {
+    return `<div class="suelta">
+      <video id="videoEscaner" playsinline muted style="width:100%;border-radius:8px;background:#000"></video>
+      <button class="btn btn--fantasma" id="pararEscaner" style="margin-top:8px">Cancelar</button>
+    </div>`;
+  }
+  return `
+    <label class="campo"><span>Buscar en tu catálogo</span><input id="nutriBuscarNombre" type="text" maxlength="40" placeholder="pollo, arroz..."></label>
+    ${resultadosBusquedaAlimento.length ? `<div class="equipo__pesos">
+      ${resultadosBusquedaAlimento.map(a => `<button class="mini" data-usar-alimento="${esc(a.id)}">${esc(a.nombre)}</button>`).join("")}
+    </div>` : ""}
+    <label class="campo"><span>Código de barras</span><input id="nutriCodigoBarras" type="text" inputmode="numeric" maxlength="13" placeholder="EAN-13 u 8"></label>
+    <div class="acciones">
+      <button class="btn btn--fantasma" data-buscar-nombre="1">Buscar por nombre</button>
+      <button class="btn btn--fantasma" data-buscar-codigo="1">Buscar código</button>
+      ${conCamara ? `<button class="btn" id="escanearCodigo">Escanear con cámara</button>` : ""}
+    </div>`;
+}
+
+/** El array de pesos que edita cada categoría del editor de equipo —
+    "discos" y "fraccionales" viven los dos dentro de `discos`, no como
+    propiedades sueltas. */
+function pesosArrayDe(eq, clave) {
+  if (clave === "discos") return eq.discos.pesos;
+  if (clave === "fraccionales") return eq.discos.fraccionales;
+  if (clave === "mancuerna") return eq.mancuerna.pesos;
+  if (clave === "banda") return eq.banda.pesos;
+  return [];
+}
+
+/** Botón de activar/desactivar por categoría, en Perfil → Equipo. "Barra
+    olímpica" solo si pesa de verdad 20 kg — si se cambia, es una barra,
+    no necesariamente esa. */
+function equipoCategoriasHTML(eq) {
+  return equipo.CATEGORIAS_EQUIPO.map(c => {
+    const nombre = c.clave === "barra"
+      ? (eq.barra.kg === 20 ? "Barra olímpica" : `Barra (${eq.barra.kg} kg)`)
+      : c.nombre;
+    return `<button class="tema__b" data-equipo-toggle="${c.clave}" aria-pressed="${!!eq[c.clave]?.activo}">${esc(nombre)}</button>`;
+  }).join("");
+}
+
+/** Cuenta cuántos hay de cada peso — dos discos de 5 kg son "5 kg × 2",
+    no dos filas iguales. */
+function contarPesos(pesos) {
+  const cantidadPorValor = new Map();
+  const orden = [];
+  for (const p of [...pesos].sort((a, b) => b - a)) {
+    if (!cantidadPorValor.has(p)) orden.push(p);
+    cantidadPorValor.set(p, (cantidadPorValor.get(p) || 0) + 1);
+  }
+  return orden.map(valor => ({ valor, cantidad: cantidadPorValor.get(valor) }));
+}
+
+/** Lista de pesos editable (discos, fraccionales, mancuernas, bandas):
+    cada peso con su cantidad y un ± para subirla o bajarla, y un campo
+    para dar de alta un peso que todavía no está en la lista. */
+function pesosEditorHTML(clave, pesos, sufijo = " kg") {
+  const grupos = contarPesos(pesos);
+  return `<div class="equipo__pesos">
+    ${grupos.map(g => `<span class="equipo__peso">
+        <button class="mini mini--x" data-equipo-cantidad="${clave}" data-valor="${g.valor}" data-dir="-1">−</button>
+        ${g.valor}${sufijo} × ${g.cantidad}
+        <button class="mini mini--x" data-equipo-cantidad="${clave}" data-valor="${g.valor}" data-dir="1">+</button>
+      </span>`).join("") || `<span class="equipo__vacio">Sin nada añadido</span>`}
+    <span class="equipo__anadir">
+      <input type="number" step="0.5" min="0" inputmode="decimal" id="nuevoPeso-${clave}" placeholder="+ kg">
+      <button class="mini" data-equipo-anadir="${clave}">Añadir</button>
+    </span>
+  </div>`;
+}
+
 /**
  * El día de la rutina con las sustituciones del cazador aplicadas.
  * Se cambia el movimiento, no la prescripción: las series, el rango de
@@ -130,12 +363,16 @@ function dia(n) {
  * turnos entre los días con algo pendiente (primero el primero de cada
  * uno, luego el segundo...) para no vaciar un solo patrón, y se cortan
  * en 7 — un parche puntual, no una sesión entera de más. Si el mismo
- * patrón falta dos veces (PPL x2), no se repite el ejercicio.
+ * patrón falta dos veces (PPL x2), no se repite el ejercicio. Un
+ * ejercicio sin equipo activo tampoco se ofrece — spec 007.
  */
 const TOPE_REPESCA = 7;
 function ejerciciosRepesca(prog) {
   const porDia = nucleo(prog)
-    .map(n => { const ya = registradosSemana(n); return dia(n).ejercicios.filter(e => !ya.has(e.clave)); })
+    .map(n => {
+      const ya = registradosSemana(n);
+      return dia(n).ejercicios.filter(e => !ya.has(e.clave) && disponible(e));
+    })
     .filter(arr => arr.length);
 
   const vistos = new Set(), salida = [];
@@ -158,7 +395,7 @@ const pesoActual = () => {
   return h.length ? h[h.length - 1].kg : (cazador?.pesoCorporal || 80);
 };
 
-const escalon = ej => equipo.escalonDe(ej.implemento);
+const escalon = ej => equipo.escalonDe(equipoActivo(), ej.implemento);
 
 /** Las veces que se registró este ejercicio, en orden de fecha.
     No vale fiarse del orden de inserción: restaurar una copia puede
@@ -355,6 +592,8 @@ async function entrar(id) {
   cazador = await DB.cazadores.get(id);
   E = await DB.estado.cargar(id);
   filas = await DB.historial.lista(id);
+  filasNutricion = await DB.nutricion.lista(id);
+  alimentosDB = await DB.alimentos.listar();
   desbloqueados = (await DB.logros.lista(id)).map(l => l.logro);
   localStorage.setItem(CLAVE_SESION, id);
   document.body.classList.remove("puerta-abierta");
@@ -409,12 +648,13 @@ const ICONOS = {
   logros:    `<path d="M8 3h8v6a4 4 0 0 1-8 0V3Z"/><path d="M8 5.5H5V7a3 3 0 0 0 3 3"/><path d="M16 5.5h3V7a3 3 0 0 1-3 3"/><path d="M12 13v4"/><path d="M8.5 21h7"/>`,
   historial: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>`,
   perfil:    `<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/>`,
-  manual:    `<path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2V5Z"/><path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2V5Z"/>`
+  manual:    `<path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 0-2 2V5Z"/><path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 1 2 2V5Z"/>`,
+  menus:     `<rect x="4" y="5" width="4" height="4" rx="1"/><path d="M11 7h9"/><rect x="4" y="11" width="4" height="4" rx="1"/><path d="M11 13h9"/><rect x="4" y="17" width="4" height="4" rx="1"/><path d="M11 19h9"/>`
 };
-const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", historial: "Historial", perfil: "Perfil", manual: "Manual" };
+const NOMBRE_VISTA = { misiones: "Misiones", logros: "Logros", historial: "Historial", perfil: "Perfil", manual: "Manual", menus: "Menús" };
 
 function pintarNav() {
-  const activa = vista === "dia" || vista === "movilidad" || vista === "resultado" ? "misiones" : vista;
+  const activa = vista === "dia" || vista === "movilidad" || vista === "cardio" || vista === "nutricion" || vista === "resultado" ? "misiones" : vista;
   $("nav").innerHTML = Object.keys(ICONOS).map(v => `
     <button class="nav__b" data-vista="${v}" aria-current="${activa === v}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -496,6 +736,44 @@ function bloqueAtrasado(prog) {
 
 /** ¿Ya se cerró la sesión de movilidad de esta semana? */
 const movilidadHecha = () => filas.some(f => f.dia === 0 && f.semana === E.semana);
+
+/** Cardio es suelto, no semanal: se marca hecho solo hasta medianoche,
+ * al día siguiente vuelve a estar disponible. */
+const cardioHechaHoy = () => filas.some(f => f.dia === -1 && f.f === hoy());
+
+function tarjetaCardio() {
+  const hecha = cardioHechaHoy();
+  return `<button class="tarjeta ${hecha ? "tarjeta--hecha" : ""}" data-vista="cardio">
+      <span class="tarjeta__n">✚</span>
+      <span class="tarjeta__cuando">Cuando puedas</span>
+      <h3 class="tarjeta__nom">Cardio</h3>
+      <span class="tarjeta__lema">Pies rápidos, manos arriba</span>
+      <span class="tarjeta__pie">${hecha ? "Hecho hoy" : `${CARDIO.length} bloques · sombra, pies, comba`}</span>
+    </button>`;
+}
+
+function tarjetaNutricion() {
+  const nutri = nutricionEstado();
+  const totales = N.totalesDia(nutricionHoy());
+  const pie = !nutri.objetivo
+    ? "Configura tu perfil en Ficha"
+    : `${miles(totales.kcal)} / ${miles(nutri.objetivo.kcal)} kcal hoy`;
+  return `<button class="tarjeta" data-vista="nutricion">
+      <span class="tarjeta__n">🍽</span>
+      <span class="tarjeta__cuando">Cada día</span>
+      <h3 class="tarjeta__nom">Nutrición</h3>
+      <span class="tarjeta__lema">Lo que entra, también cuenta</span>
+      <span class="tarjeta__pie">${pie}</span>
+    </button>`;
+}
+
+/** Cuánto falta para la próxima semana de movilidad, en una semana
+ * normal — antes no había ninguna pista hasta estar ya dentro. */
+function proximaMovilidadTexto(semana) {
+  const proxima = Math.ceil((semana + 1) / 5) * 5;
+  const faltan = proxima - semana;
+  return ` · movilidad en ${faltan} semana${faltan === 1 ? "" : "s"} (semana ${proxima})`;
+}
 
 function pintarMovilidadPortada() {
   const r = P.racha(filas);
@@ -609,6 +887,416 @@ function pintarMovilidad() {
   }
 }
 
+function pintarCardio() {
+  stopAnim();
+  const sesion = E.sesion.cardio || (E.sesion.cardio = {});
+  const bloques_ = CARDIO.map(b => ({ ...b, hecho: !!sesion[b.clave] }));
+  const hechos = bloques_.filter(b => b.hecho).length;
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">Cuando puedas</div>
+      <h2 class="mision__tit">Cardio</h2>
+      <div class="mision__lema">${hechos} de ${bloques_.length} bloques · sin cargas</div>
+    </div>
+    <div class="suelta">No cuenta como misión de fuerza ni hace falta para pasar de semana —
+      márcalo cuando lo hagas, el día que sea.</div>
+    ${bloques_.map(b => `
+      <section class="ej">
+        <div class="ej__cab">
+          <div class="ej__txt">
+            <h3 class="ej__nom">${esc(b.nombre)}</h3>
+            <div class="ej__meta">${b.rondas} rondas × ${b.segundosRonda}s · descanso ${b.segundosDescanso}s</div>
+            <div class="ej__musc">${b.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
+          </div>
+        </div>
+        <div class="tecnica"><div></div>
+          <ul class="claves">${b.claves.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+        </div>
+        <div class="series">
+          <button class="serie ${b.hecho ? "ok" : ""}" style="flex:1" data-cardiobloque="${b.clave}">
+            ${b.hecho ? "✓ Hecho" : `Marcar · ${b.rondas} rondas`}
+          </button>
+        </div>
+      </section>`).join("")}
+    <div class="acciones">
+      <button class="btn btn--arise" id="terminarCardio">Arise · cerrar cardio</button>
+    </div>`;
+}
+
+/** Anillo SVG de kcal del día — mismo lenguaje de "HUD" que el resto
+    del Sistema, no una barra recta con un número al lado. */
+function anilloKcalHTML(actual, objetivo) {
+  const CIRC = 251.2;
+  const frac = objetivo ? Math.min(1, actual / objetivo) : 0;
+  return `<div class="anillo">
+      <svg width="92" height="92" viewBox="0 0 92 92">
+        <circle cx="46" cy="46" r="40" fill="none" stroke="var(--linea)" stroke-width="8"/>
+        <circle cx="46" cy="46" r="40" fill="none" stroke="var(--sis)" stroke-width="8"
+          stroke-linecap="round" transform="rotate(-90 46 46)"
+          stroke-dasharray="${CIRC}" stroke-dashoffset="${(CIRC * (1 - frac)).toFixed(1)}"/>
+      </svg>
+      <div class="anillo__num">
+        <span class="anillo__kcal">${miles(actual)}</span>
+        <span class="anillo__obj">/ ${miles(objetivo)} kcal</span>
+      </div>
+    </div>`;
+}
+
+/** Mini barra de un macro, junto al anillo de kcal. */
+function macroMiniHTML(etiqueta, actual, objetivo, sufijo) {
+  const pct = objetivo ? Math.min(100, Math.round((actual / objetivo) * 100)) : 0;
+  return `<div class="macro-mini">
+      <span>${etiqueta}</span>
+      <span class="barra"><i style="width:${pct}%"></i></span>
+      <b>${actual}${sufijo}</b>
+    </div>`;
+}
+
+/**
+ * Sección plegable, cerrada por defecto — Perfil, Nutrición y Menús
+ * mostraban todo de golpe ("mucho slide"); ahora solo lo que se está
+ * usando ahora mismo se despliega. Mismo patrón visual que las
+ * sesiones del Historial, reutilizado en vez de inventar uno nuevo.
+ */
+function panel(id, titulo, subtitulo, contenidoHTML) {
+  const abierto = panelesAbiertos.has(id);
+  return `
+    <button class="sesion ${abierto ? "sesion--abierta" : ""}" data-panel="${id}">
+      <span class="sesion__dia">${esc(titulo)}</span>
+      <span class="sesion__meta">${esc(subtitulo)}</span>
+    </button>
+    ${abierto ? contenidoHTML : ""}`;
+}
+
+/**
+ * Botón de una rejilla de tarjetas — Perfil usa esto en vez de
+ * `panel()`. Solo una tarjeta abierta a la vez (`perfilAbierto`, no
+ * un Set): al tocarla, la rejilla se sustituye por su contenido con
+ * un botón "Atrás" — no se apila contenido debajo de la rejilla.
+ */
+function tarjetaPanel(id, icono, titulo, subtitulo) {
+  return `<button class="tarjeta-panel" data-perfilpanel="${id}">
+      <span class="tarjeta-panel__ic">${icono}</span>
+      <span class="tarjeta-panel__nom">${esc(titulo)}</span>
+      <span class="tarjeta-panel__meta">${esc(subtitulo)}</span>
+    </button>`;
+}
+
+function pintarNutricion() {
+  stopAnim();
+  if (recalcularNutricionSiHaceFalta()) guardar();
+  const nutri = nutricionEstado();
+
+  if (!nutri.objetivo) {
+    $("app").innerHTML = `
+      <div class="mision">
+        <div class="mision__cab">Cada día</div>
+        <h2 class="mision__tit">Nutrición</h2>
+        <div class="mision__lema">Falta tu perfil</div>
+      </div>
+      <div class="suelta">Sexo y actividad, más (edad y altura) o (% de grasa corporal). Sin esos
+        datos no se calcula ningún objetivo — nada se inventa.</div>
+      <div class="acciones">
+        <button class="btn btn--go" data-vista="perfil">Ir a la Ficha</button>
+      </div>`;
+    return;
+  }
+
+  buscadorDestino = "comida";
+  const catalogo = catalogoAlimentos();
+  const hoyFilas = nutricionHoy();
+  const comidas = hoyFilas.filter(f => f.tipo === "comida");
+  const totales = N.totalesDia(hoyFilas);
+  const tomadosHoy = new Set(hoyFilas.filter(f => f.tipo === "suplemento").map(f => f.clave));
+  const sugeridos = N.SUPLEMENTOS_SUGERIDOS.filter(s => !nutri.suplementos.some(x => x.clave === s.clave));
+  const gastoHoy = comidas.reduce((a, f) => a + (f.precio || 0), 0);
+  const diaHoy = N.diaSemanaDe(hoy());
+  const menuHoy = nutri.menuSemanal[diaHoy] || {};
+  const nombreDiaHoy = N.DIAS_SEMANA.find(d => d.clave === diaHoy)?.nombre ?? diaHoy;
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">Hoy</div>
+      <h2 class="mision__tit">Nutrición</h2>
+    </div>
+    <div class="anillo-wrap">
+      ${anilloKcalHTML(totales.kcal, nutri.objetivo.kcal)}
+      <div class="macros-mini">
+        ${macroMiniHTML("Proteína", totales.proteina, nutri.objetivo.proteina, "g")}
+        ${macroMiniHTML("Grasa", totales.grasa, nutri.objetivo.grasa, "g")}
+        ${macroMiniHTML("Carbos", totales.carbo, nutri.objetivo.carbo, "g")}
+      </div>
+    </div>
+    ${gastoHoy ? `<div class="ej__meta" style="margin:0 12px">Gasto estimado hoy: <b>${gastoHoy.toFixed(2)} €</b></div>` : ""}
+
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Hoy · ${esc(nombreDiaHoy)}</h3>
+        <div class="ej__meta">Lo que tienes planificado — marca lo que te has comido. Planifica la
+        semana en Menús.</div></div></div>
+      <div class="tablero-comida">
+        ${N.COMIDAS_DIA.map(c => {
+          const claveP = menuHoy[c.clave];
+          const plato = claveP && nutri.platos.find(p => p.clave === claveP);
+          if (!plato) return `<button class="tarjeta-comida tarjeta-comida--vacia" data-vista="menus">
+              <span class="tarjeta-comida__ic">＋</span>
+              <span class="tarjeta-comida__slot">${esc(c.nombre)}</span>
+              <span class="tarjeta-comida__nom">Sin planificar</span>
+              <span class="tarjeta-comida__pie">Planificar en Menús</span>
+            </button>`;
+          const hechoHoy = hoyFilas.some(f => f.tipo === "comida" && f.slot === c.clave);
+          const m = N.macrosDePlato(plato.ingredientes, catalogo);
+          return `<button class="tarjeta-comida ${hechoHoy ? "tarjeta-comida--hecha" : ""}" data-menuhoy-toggle="${c.clave}|${plato.clave}">
+              <span class="tarjeta-comida__ic">${hechoHoy ? "✓" : ""}</span>
+              <span class="tarjeta-comida__slot">${esc(c.nombre)}</span>
+              <span class="tarjeta-comida__nom">${esc(plato.nombre)}</span>
+              <span class="tarjeta-comida__pie">${hechoHoy ? "Hecho · " : ""}${miles(m.kcal)} kcal</span>
+            </button>`;
+        }).join("")}
+      </div>
+    </section>
+
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Comidas de hoy</h3></div></div>
+      ${comidas.length ? `<table class="tabla">
+        <tr><th>Alimento</th><th>Kcal</th><th></th></tr>
+        ${comidas.map(f => `<tr>
+            <td>${esc(f.nombre)}${f.gramos ? ` · ${f.gramos} g` : ""}${f.precio ? ` · ${f.precio.toFixed(2)} €` : ""}</td>
+            <td>${f.sinMacros ? "sin macros" : miles(f.kcal)}</td>
+            <td><button class="mini mini--x" data-comida-borrar="${f.id}">×</button></td>
+          </tr>`).join("")}
+      </table>` : `<p class="vt__txt">Nada registrado todavía hoy.</p>`}
+    </section>
+
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Suplementos</h3>
+        <div class="ej__meta">Solo registro de toma — no entra en las kcal de arriba</div></div></div>
+      <div class="equipo__pesos">
+        ${nutri.suplementos.map(s => `<span class="equipo__peso">
+            <button class="mini mini--x" data-suplemento-quitar="${s.clave}">×</button>
+            ${esc(s.nombre)}
+            <button class="mini ${tomadosHoy.has(s.clave) ? "" : "mini--x"}" data-suplemento-tomado="${s.clave}">${tomadosHoy.has(s.clave) ? "✓" : "○"}</button>
+          </span>`).join("") || `<span class="equipo__vacio">Sin suplementos añadidos</span>`}
+      </div>
+      ${sugeridos.length ? `<p class="vt__pie">Sugeridos</p>
+      <div class="equipo__pesos">
+        ${sugeridos.map(s => `<span class="equipo__peso">
+            ${esc(s.nombre)}
+            <button class="mini" data-suplemento-anadir="${s.clave}" data-nombre="${esc(s.nombre)}">+</button>
+          </span>`).join("")}
+      </div>` : ""}
+      <div class="equipo__anadir">
+        <input type="text" id="nutriSupNombre" maxlength="40" placeholder="Otro...">
+        <button class="mini" data-suplemento-anadir="manual">Añadir</button>
+      </div>
+    </section>
+
+    <div class="paneles">
+    ${panel("registrarOtro", "Registrar algo más", "Plato suelto, comida libre, o macros a mano", `
+      <section class="ej">
+        <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Otro plato guardado</h3>
+          <div class="ej__meta">Fuera de lo planificado para hoy. Crea o edita platos en Menús.</div></div></div>
+        ${nutri.platos.length ? `<div class="equipo__pesos">
+          ${nutri.platos.map(p => `<span class="equipo__peso">
+              ${esc(p.nombre)} · ${miles(N.macrosDePlato(p.ingredientes, catalogo).kcal)} kcal
+              <button class="mini" data-plato-registrar="${p.clave}">+1 ración</button>
+            </span>`).join("")}
+        </div>` : `<p class="vt__txt">Todavía no has guardado ningún plato — hazlo en Menús.</p>`}
+      </section>
+
+      <section class="ej">
+        <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Comida libre</h3>
+          <div class="ej__meta">Para cuando no sabes los macros — fuera de casa, en un bar, en casa
+          de alguien. No cuenta en los totales de arriba, pero queda constancia.</div></div></div>
+        <label class="campo"><span>Qué / dónde</span><input id="nutriLibreNombre" type="text" maxlength="60" placeholder="Comida en bar"></label>
+        <button class="btn" data-comida-libre-anadir="1">Registrar</button>
+      </section>
+
+      <section class="ej">
+        <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Añadir comida suelta</h3>
+          <div class="ej__meta">Para lo que no viene de un plato guardado. Busca, escanea o escribe
+          el código — o mete los macros a mano por 100 g, se escala a los gramos que pongas.</div></div></div>
+        ${buscadorAlimentoHTML()}
+        <label class="campo"><span>Nombre</span><input id="nutriComNombre" type="text" maxlength="60" placeholder="Pechuga de pollo"></label>
+        <label class="campo"><span>Gramos</span><input id="nutriComGramos" type="number" inputmode="numeric" min="1" placeholder="150"></label>
+        <label class="campo"><span>Kcal / 100 g</span><input id="nutriComKcal" type="number" inputmode="numeric" min="0" placeholder="165"></label>
+        <label class="campo"><span>Proteína / 100 g</span><input id="nutriComProteina" type="number" inputmode="numeric" min="0" placeholder="31"></label>
+        <label class="campo"><span>Grasa / 100 g</span><input id="nutriComGrasa" type="number" inputmode="numeric" min="0" placeholder="4"></label>
+        <label class="campo"><span>Carbohidratos / 100 g</span><input id="nutriComCarbo" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+        <button class="btn" data-comida-anadir="1">Añadir a hoy</button>
+      </section>`)}
+    </div>`;
+}
+
+/**
+ * Gestión de platos (batch cooking, 1-2 veces por semana) y su
+ * planificación en el calendario semanal — separado de la vista
+ * diaria de Nutrición a propósito: crear/editar un plato no es un
+ * gesto de cada día. Registrar que te lo has comido, sí, y eso sigue
+ * en Nutrición (spec 010, ampliación "Menús").
+ */
+function pintarMenus() {
+  stopAnim();
+  buscadorDestino = "ingrediente";
+  const nutri = nutricionEstado();
+  const catalogo = catalogoAlimentos();
+  const sugeridos = N.PLATOS_SUGERIDOS.filter(s => !nutri.platos.some(p => p.clave === s.clave));
+  const nombreTipo = t => N.COMIDAS_DIA.find(c => c.clave === t)?.nombre ?? "Plato";
+  const draftTotal = N.macrosDePlato(platoDraftIngredientes, catalogo);
+  const nuevoPlatoAbierto = panelesAbiertos.has("nuevoplato");
+  const diaHoy = N.diaSemanaDe(hoy());
+  const totalComidasSemana = Object.values(nutri.menuSemanal).reduce((a, dia) => a + Object.keys(dia).length, 0);
+
+  $("app").innerHTML = `
+    <div class="mision">
+      <div class="mision__cab">1-2 veces por semana</div>
+      <h2 class="mision__tit">Menús</h2>
+      <div class="mision__lema">${nutri.platos.length} plato${nutri.platos.length === 1 ? "" : "s"} ·
+        ${totalComidasSemana} comida${totalComidasSemana === 1 ? "" : "s"} planificada${totalComidasSemana === 1 ? "" : "s"}</div>
+    </div>
+
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Tus platos</h3>
+        <div class="ej__meta">Macros calculadas por ingrediente — se reutilizan siempre que
+        planifiques o registres ese plato.</div></div></div>
+      <div class="tablero-comida">
+        ${nutri.platos.map(p => {
+          const m = N.macrosDePlato(p.ingredientes, catalogo);
+          return `<div class="tarjeta-comida">
+              <button class="tarjeta-comida__ic tarjeta-comida__borrar" data-plato-quitar="${p.clave}" title="Quitar">×</button>
+              <span class="tarjeta-comida__slot">${esc(nombreTipo(p.tipoComida))}</span>
+              <span class="tarjeta-comida__nom">${esc(p.nombre)}</span>
+              <span class="tarjeta-comida__pie">${miles(m.kcal)} kcal${p.precio ? ` · ${p.precio.toFixed(2)} €` : ""}</span>
+            </div>`;
+        }).join("")}
+        ${sugeridos.map(s => {
+          const m = N.macrosDePlato(s.ingredientes, catalogo);
+          return `<button class="tarjeta-comida tarjeta-comida--vacia" data-plato-sugerido="${s.clave}">
+              <span class="tarjeta-comida__ic">＋</span>
+              <span class="tarjeta-comida__slot">${esc(nombreTipo(s.tipoComida))}</span>
+              <span class="tarjeta-comida__nom">${esc(s.nombre)}</span>
+              <span class="tarjeta-comida__pie">${miles(m.kcal)} kcal${s.precio ? ` · ${s.precio.toFixed(2)} €` : ""}</span>
+            </button>`;
+        }).join("")}
+        <button class="tarjeta-comida tarjeta-comida--vacia" data-panel="nuevoplato">
+          <span class="tarjeta-comida__ic">＋</span>
+          <span class="tarjeta-comida__slot">Nuevo</span>
+          <span class="tarjeta-comida__nom">Nuevo plato</span>
+          <span class="tarjeta-comida__pie">Con ingredientes</span>
+        </button>
+      </div>
+    </section>
+
+    ${nuevoPlatoAbierto ? `<div class="paneles">
+      <section class="ej">
+        <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Nuevo plato</h3>
+          <div class="ej__meta">Añade ingredientes con sus gramos — el total sale solo, buscando en
+          tu catálogo, escaneando o a mano.</div></div></div>
+        <label class="campo"><span>Nombre del plato</span><input id="nutriPlatoNombre" type="text" maxlength="60" placeholder="Pollo con arroz (ración)"></label>
+        <p class="vt__pie">Tipo de comida · opcional, solo filtra el selector de la semana</p>
+        <div class="tema">
+          ${N.COMIDAS_DIA.map(c => `<button class="tema__b" data-nuevoplatotipo="${c.clave}" aria-pressed="${nuevoPlatoTipo === c.clave}">${c.nombre}</button>`).join("")}
+        </div>
+        <label class="campo"><span>Precio de la ración · opcional, estimado</span><input id="nutriPlatoPrecio" type="number" step="0.1" inputmode="decimal" min="0" placeholder="€"></label>
+
+        ${platoDraftIngredientes.length ? `
+          <p class="vt__pie">Ingredientes</p>
+          <div class="equipo__pesos">
+            ${platoDraftIngredientes.map((ing, i) => `<span class="equipo__peso">
+                <button class="mini mini--x" data-ingrediente-quitar="${i}">×</button>
+                ${esc(ing.nombre)} · ${ing.gramos} g
+              </span>`).join("")}
+          </div>
+          <p class="vt__pie">Total: ${miles(draftTotal.kcal)} kcal · ${draftTotal.proteina} g prot ·
+            ${draftTotal.grasa} g grasa · ${draftTotal.carbo} g carbo</p>
+        ` : `<p class="vt__txt">Sin ingredientes todavía — añade el primero abajo.</p>`}
+
+        <label class="campo"><span>Gramos del ingrediente a añadir</span><input id="nutriIngGramos" type="number" inputmode="numeric" min="1" placeholder="150"></label>
+        ${buscadorAlimentoHTML()}
+
+        <div class="acciones">
+          ${platoDraftIngredientes.length ? `<button class="btn btn--go" data-plato-guardar="1">Guardar plato</button>` : ""}
+          <button class="btn btn--fantasma" data-panel="nuevoplato">Cerrar</button>
+        </div>
+      </section>
+    </div>` : ""}
+
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Semana</h3>
+        <div class="ej__meta">Toca un día para planificarlo. Se registra de verdad desde Nutrición,
+        esto solo planifica.</div></div></div>
+      <div class="dias">
+      ${N.DIAS_SEMANA.map(d => {
+        const asignado = nutri.menuSemanal[d.clave] || {};
+        const resumen = N.COMIDAS_DIA
+          .map(c => asignado[c.clave] && nutri.platos.find(p => p.clave === asignado[c.clave])?.nombre)
+          .filter(Boolean);
+        const abierto = menuDiaAbierto === d.clave;
+        return `
+          <button class="dia-fila ${abierto ? "dia-fila--abierta" : ""} ${d.clave === diaHoy ? "dia-fila--hoy" : ""} ${!resumen.length ? "dia-fila--vacia" : ""}" data-menudia="${d.clave}">
+            <div class="dia-fila__cab">
+              <span class="dia-fila__nom">${d.nombre}</span>
+              <span class="dia-fila__puntos">${N.COMIDAS_DIA.map(c => `<i class="${asignado[c.clave] ? "on" : ""}">${asignado[c.clave] ? "✓" : ""}</i>`).join("")}</span>
+            </div>
+            <span class="dia-fila__meta">${resumen.length ? resumen.join(" · ") : "Sin planificar"}</span>
+          </button>
+          ${abierto ? N.COMIDAS_DIA.map(c => {
+            const celda = `${d.clave}|${c.clave}`;
+            const claveP = asignado[c.clave];
+            const plato = claveP && nutri.platos.find(p => p.clave === claveP);
+            const abierta = menuCeldaAbierta === celda;
+            const opciones = nutri.platos.filter(p => !p.tipoComida || p.tipoComida === c.clave);
+            return `
+              <div class="series">
+                <button class="serie" style="flex:1" data-menucelda="${celda}">
+                  ${esc(c.nombre)}: ${plato ? esc(plato.nombre) : "sin planificar"}
+                </button>
+                ${plato ? `<button class="mini mini--x" data-menu-quitar="${d.clave}|${c.clave}">×</button>` : ""}
+              </div>
+              ${abierta ? `<div class="equipo__pesos">
+                ${opciones.length ? opciones.map(p => `
+                  <button class="mini" data-menu-asignar="${d.clave}|${c.clave}|${p.clave}">${esc(p.nombre)}</button>
+                `).join("") : `<span class="equipo__vacio">Guarda algún plato de ${nombreTipo(c.clave).toLowerCase()} arriba primero</span>`}
+              </div>` : ""}`;
+          }).join("") : ""}`;
+      }).join("")}
+      </div>
+    </section>
+
+    <div class="paneles">
+    <button class="sesion ${guiaBatchAbierta ? "sesion--abierta" : ""}" data-guiabatch="1">
+      <span class="sesion__dia">Guía de batch cooking · domingo</span>
+      <span class="sesion__meta">${guiaBatchAbierta ? "Ocultar" : "Ver pasos, nevera y congelador"}</span>
+    </button>
+    ${guiaBatchAbierta ? `
+    <section class="ej">
+      <div class="ej__cab"><div class="ej__txt"><h3 class="ej__nom">Domingo (~2 h)</h3></div></div>
+      <ul class="claves">
+        <li>1. Horno a 200 °C. Pollo (1,6 kg con pimentón, comino, ajo, sal, pimienta): 25 min. En
+          otra bandeja, patata troceada (1,4 kg): 35-40 min.</li>
+        <li>2. Arroz: cocer 980 g en crudo (12-15 min) y enfriar rápido.</li>
+        <li>3. Verdura congelada (2,8 kg): saltear 8-10 min sin descongelar.</li>
+        <li>4. Huevos: 7 duros (12 min), con cáscara.</li>
+        <li>5. Tortillas: 2, de 3 huevos + 1 lata de atún cada una.</li>
+        <li>6. Pavo (600 g): sofreír con cebolla, ajo y pimentón, 10 min.</li>
+        <li>7. Merluza (400 g): horno a 180 °C, 15-20 min, con ajo y pimentón.</li>
+        <li>8. Montaje: repartir cada preparación en 7 partes iguales (7 tuppers de comida y 7 de
+          cena). La cucharada de AOVE se añade al servir.</li>
+        <li>9. Overnight oats: 4 tarros (avena + skyr + agua). La fruta se añade al momento.</li>
+      </ul>
+      <div class="ej__cab" style="margin-top:14px"><div class="ej__txt"><h3 class="ej__nom">Nevera / congelador</h3></div></div>
+      <ul class="claves">
+        <li>Nevera (lun-jue): comidas, cenas (tortillas y pavo), 4 tarros de oats y los huevos duros.</li>
+        <li>Congelador (vie-dom): comidas y cenas (pavo del sábado, merluza de viernes y domingo).</li>
+        <li>Jueves por la noche: pasar los tuppers del congelador a la nevera.</li>
+        <li>Miércoles: 3 tarros de oats más (5 min).</li>
+      </ul>
+      <p class="vt__pie">Del plan de batch cooking que pasaste — texto de referencia, no se calcula
+      nada a partir de aquí.</p>
+    </section>` : ""}
+    </div>`;
+}
+
 function pintarMisiones() {
   stopAnim();
   if (esSemanaMovilidad(E.semana)) { pintarMovilidadPortada(); return; }
@@ -674,12 +1362,14 @@ function pintarMisiones() {
         ${r.margen === 0 ? "Hoy es el último día para mantener la racha"
                          : `Queda ${r.margen} día para mantener la racha`}</div>` : ""}
       <div class="portada__pie">${nNucleo} días sostienen la semana ·
-        descanso ${esc(prog.descansos.toLowerCase())}</div>
+        descanso ${esc(prog.descansos.toLowerCase())}${proximaMovilidadTexto(E.semana)}</div>
     </div>
     ${copiaHTML(st)}
     <div class="tablero">
       ${tarjeta(pendiente, true)}
       ${restantes.map(e => tarjeta(e, false)).join("")}
+      ${tarjetaCardio()}
+      ${tarjetaNutricion()}
     </div>
     ${semanaHecha ? `<div class="acciones">
       <button class="btn btn--go" id="semana">Empezar semana ${E.semana + 1}</button>
@@ -726,7 +1416,8 @@ const CAMBIO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 function alternativas(ej) {
   const mismo = p => Object.entries(EJERCICIOS)
     .filter(([k, e]) => k !== ej.clave && p(e))
-    .map(([k, e]) => ({ clave: k, ...e }));
+    .map(([k, e]) => ({ clave: k, ...e }))
+    .filter(disponible);
   const porPatron = mismo(e => e.patron === ej.patron);
   return porPatron.length >= 2 ? porPatron
     : [...porPatron, ...mismo(e => e.grupo === ej.grupo && e.patron !== ej.patron)];
@@ -754,9 +1445,9 @@ function discoHTML(kg) {
   return `<div class="disco${p.frac ? " disco--frac" : ""}" style="background:${p.fondo};color:${p.texto};height:${p.alto}px;width:${p.ancho}px">${kg}</div>`;
 }
 function barraHTML(total) {
-  const c = equipo.repartoDe(total);
+  const c = equipo.repartoDe(equipoActivo(), total);
   if (!c) return "";
-  if (!c.izq.length && !c.der.length) return `<div class="barra"><span class="barra__sola">Barra sola · ${equipo.BARRA.kg} kg</span></div>`;
+  if (!c.izq.length && !c.der.length) return `<div class="barra"><span class="barra__sola">Barra sola · ${equipoActivo().barra.kg} kg</span></div>`;
   /* Ascendente deja los fraccionales (los pesos más ligeros) en la
      punta, junto al collarín, y los bumpers pegados al eje. */
   const izq = [...c.izq].sort((a, b) => a - b).map(discoHTML).join("");
@@ -768,6 +1459,37 @@ function barraHTML(total) {
     </div>
     <div class="barra__pies"><span>Izquierda ${c.izq.join(" + ") || "—"}</span><span>Derecha ${c.der.join(" + ") || "—"}</span></div>
     ${c.cabe ? "" : `<div class="barra__aviso">No cabe entero en el manguito con este reparto</div>`}`;
+}
+
+/**
+ * El "Ver técnica" de en medio de una serie, en popup — no despliega
+ * en línea (movía el resto de ejercicios de sitio cada vez que lo
+ * abrías). Mismo contenido reducido que ya se decidió como "modo
+ * entreno" en la spec 008: muñeco, claves, dónde notarlo y el aviso
+ * fijo, con un enlace a la ficha completa para errores/variantes.
+ */
+function popupTecnicaHTML(ej) {
+  const principal = explicacionDe(ej.musculos[0]);
+  return `<div class="modal" data-tecnica="${ej.sesionId}">
+    <div class="modal__caja">
+      <div class="modal__cab">
+        <h3>${esc(ej.nombre)}</h3>
+        <button class="modal__cerrar" data-tecnica="${ej.sesionId}" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="tecnica__musculo">
+        <span class="tecnica__muscnom">${esc(principal.comun)}</span>${principal.ubicacion ? ` — ${esc(principal.ubicacion)}` : ""}
+        ${ej.musculos.length > 1 ? `<span class="tecnica__muscsec">${ej.musculos.slice(1).map(esc).join(" · ")}</span>` : ""}
+      </p>
+      <div id="lienzo" class="lienzo"></div>
+      <ul class="claves">${ej.claves.map(c => {
+        const riesgo = c.startsWith("!");
+        return `<li class="${riesgo ? "riesgo" : ""}">${esc(riesgo ? c.slice(1) : c)}</li>`;
+      }).join("")}</ul>
+      ${ej.dondeNotarlo ? `<p class="tecnica__nota"><b>Dónde notarlo:</b> ${esc(ej.dondeNotarlo)}</p>` : ""}
+      <p class="tecnica__aviso">Si sientes dolor punzante en las articulaciones, para el ejercicio.</p>
+      <button class="tecnica__masinfo" data-ficha="${ej.clave}">Ver ficha completa ›</button>
+    </div>
+  </div>`;
 }
 
 function pintarDia() {
@@ -847,13 +1569,9 @@ function pintarDia() {
 
     if (cambioAbierto === ej.sesionId) html += cambioHTML(ej);
 
-    if (abierta) {
-      html += `<div class="tecnica"><div id="lienzo"></div><ul class="claves">${
-        ej.claves.map(c => {
-          const riesgo = c.startsWith("!");
-          return `<li class="${riesgo ? "riesgo" : ""}">${esc(riesgo ? c.slice(1) : c)}</li>`;
-        }).join("")}</ul></div>`;
-    }
+    /* El "Ver técnica" ya no despliega en línea — abre en popup (ver
+       popupTecnicaHTML), para no mover el resto de ejercicios de sitio
+       cada vez que lo tocas a media serie. */
 
     if (ej.implemento !== "corporal") {
       html += `<div class="carga">
@@ -871,7 +1589,7 @@ function pintarDia() {
          Los escalones salen de los discos que tienes, no de porcentajes.
          Se genera siempre, aunque luego no se complete la sesión. */
       if (ej.implemento === "barra") {
-        const rampa = equipo.aproximacion(kg);
+        const rampa = equipo.aproximacion(equipoActivo(), kg);
         const igual = Array.isArray(st.aprox) && st.aprox.length === rampa.length
           && st.aprox.every((s, k) => s.kg === rampa[k].kg);
         if (!igual) st.aprox = rampa.map(s => ({ ...s, hecha: false }));
@@ -939,6 +1657,11 @@ function pintarDia() {
       <button class="btn btn--arise" id="terminar">Arise · ${d.suelto ? "guardar lo hecho" : "terminar sesión"}</button>
       <button class="btn btn--fantasma" id="vaciar">Vaciar día</button>
     </div>`;
+
+  if (tecnicaAbierta) {
+    const ejPopup = d.ejercicios.find(e => e.sesionId === tecnicaAbierta);
+    if (ejPopup) html += popupTecnicaHTML(ejPopup);
+  }
 
   $("app").innerHTML = html;
 
@@ -1054,6 +1777,86 @@ function grafica({ nombre, puntos, tipo, color, unidad, sel }) {
 /* ============================================================
    FICHA DE EJERCICIO
    ============================================================ */
+
+/**
+ * Silueta genérica (no una por ejercicio) con las zonas del músculo
+ * principal y los secundarios resaltadas — spec 008. La vista (frontal
+ * o trasera) la decide el grupo del músculo PRINCIPAL: los de tirón
+ * (espalda) casi siempre se notan mejor de espaldas.
+ */
+const ZONAS_SILUETA = {
+  frontal: { push: ["torsoSup", "hombroI", "hombroD", "brazoI", "brazoD"], pull: ["brazoI", "brazoD"], legs: ["piernaI", "piernaD"], tronco: ["torsoInf"] },
+  trasera: { pull: ["torsoSup", "hombroI", "hombroD", "brazoI", "brazoD"], push: ["hombroI", "hombroD"], legs: ["piernaI", "piernaD", "gluteo"], tronco: ["torsoInf"] }
+};
+const FORMAS_SILUETA = {
+  cabeza:   `<circle cx="60" cy="20" r="14"/>`,
+  torsoSup: `<rect x="40" y="38" width="40" height="46" rx="11"/>`,
+  torsoInf: `<rect x="44" y="83" width="32" height="34" rx="8"/>`,
+  hombroI:  `<circle cx="34" cy="45" r="10"/>`,
+  hombroD:  `<circle cx="86" cy="45" r="10"/>`,
+  brazoI:   `<rect x="21" y="52" width="14" height="56" rx="7"/>`,
+  brazoD:   `<rect x="85" y="52" width="14" height="56" rx="7"/>`,
+  piernaI:  `<rect x="42" y="118" width="16" height="70" rx="8"/>`,
+  piernaD:  `<rect x="62" y="118" width="16" height="70" rx="8"/>`,
+  gluteo:   `<rect x="40" y="110" width="40" height="18" rx="9"/>`
+};
+
+function siluetaHTML(ej) {
+  const infos = ej.musculos.map(explicacionDe);
+  const vista = infos[0]?.cara === "trasera" ? "trasera" : "frontal";
+  const mapaZonas = ZONAS_SILUETA[vista];
+  const nivel = {};
+  infos.forEach((info, i) => {
+    for (const z of mapaZonas[info.grupo] || []) {
+      if (nivel[z] !== "principal") nivel[z] = i === 0 ? "principal" : "secundario";
+    }
+  });
+  const orden = ["piernaI", "piernaD", "gluteo", "torsoInf", "torsoSup", "hombroI", "hombroD", "brazoI", "brazoD", "cabeza"];
+  const zonas = orden.map(clave => {
+    const forma = FORMAS_SILUETA[clave];
+    const n = nivel[clave];
+    return `<g class="silueta__zona ${n ? `silueta__zona--${n}` : ""}">${forma}</g>`;
+  }).join("");
+  return `<div class="silueta">
+      <svg viewBox="0 0 120 195" class="silueta__svg" aria-label="Silueta ${vista}, músculo resaltado">${zonas}</svg>
+      <p class="silueta__pie">Vista ${vista} · <span class="silueta__leyenda silueta__leyenda--principal">●</span> principal
+        ${infos.length > 1 ? `<span class="silueta__leyenda silueta__leyenda--secundario">●</span> secundario` : ""}</p>
+    </div>`;
+}
+
+/** Pestañas de la ficha: solo las que tienen contenido para este
+ * ejercicio salen — "Cómo hacerlo" (las claves de siempre) es la única
+ * que siempre está. */
+function pestanasFicha(ej) {
+  const tabs = [{ clave: "hacer", nombre: "Cómo hacerlo" }];
+  if (ej.dondeNotarlo || ej.senalesMal) tabs.push({ clave: "notar", nombre: "Dónde notarlo" });
+  if (ej.errores?.length) tabs.push({ clave: "errores", nombre: "Errores" });
+  if (ej.variantes) tabs.push({ clave: "variantes", nombre: "Variantes" });
+  return tabs;
+}
+
+function contenidoFicha(ej, tab) {
+  if (tab === "notar") {
+    return `<p class="vt__txt">${esc(ej.dondeNotarlo || "Todavía no hay nota para este ejercicio.")}</p>
+      ${ej.senalesMal ? `<p class="vt__pie"><b>Si lo haces mal:</b> ${esc(ej.senalesMal)}</p>` : ""}`;
+  }
+  if (tab === "errores") {
+    return `<ul class="claves">${ej.errores.map(e => `<li><b>${esc(e.error)}.</b> ${esc(e.arreglo)}</li>`).join("")}</ul>`;
+  }
+  if (tab === "variantes") {
+    const v = ej.variantes;
+    return `<ul class="claves">
+      ${v.facil ? `<li><b>Más fácil:</b> ${esc(v.facil)}</li>` : ""}
+      ${v.dificil ? `<li><b>Más difícil:</b> ${esc(v.dificil)}</li>` : ""}
+      ${v.alternativaRodilla ? `<li><b>Si la rodilla pide descanso:</b> ${esc(v.alternativaRodilla)}</li>` : ""}
+    </ul>`;
+  }
+  return `<ul class="claves">${ej.claves.map(c => {
+    const riesgo = c.startsWith("!");
+    return `<li class="${riesgo ? "riesgo" : ""}">${esc(riesgo ? c.slice(1) : c)}</li>`;
+  }).join("")}</ul>`;
+}
+
 function pintarEjercicio() {
   stopAnim();
   const clave = ejercicioActivo;
@@ -1090,11 +1893,20 @@ function pintarEjercicio() {
 
   const hayGraficas = sesiones.length >= 2;
 
+  const tabs = pestanasFicha(ej);
+  const tabActiva = tabs.some(t => t.clave === fichaTab) ? fichaTab : "hacer";
+
   $("app").innerHTML = `
     <div class="mision">
-      <div class="mision__cab">${esc(ej.grupo)} · ${esc(ej.patron)}</div>
+      <div class="mision__cab">${esc(ej.grupo)} · ${esc(ej.patron)}${ej.rir ? ` · RIR ${esc(ej.rir)}` : ""}</div>
       <h2 class="mision__tit">${esc(ej.nombre)}</h2>
-      <div class="ej__musc" style="margin-top:9px">${ej.musculos.map(m => `<span>${esc(m)}</span>`).join("")}</div>
+      <div class="ej__musc" style="margin-top:9px">${ej.musculos.map(m =>
+        `<button class="ej__muscbtn ${musculoAbierto === m ? "on" : ""}" data-musculo="${esc(m)}">${esc(m)}</button>`).join("")}</div>
+      ${musculoAbierto && ej.musculos.includes(musculoAbierto) ? (() => {
+        const info = explicacionDe(musculoAbierto);
+        return `<p class="ej__muscdef">${esc(info.comun)}${info.ubicacion ? ` — ${esc(info.ubicacion)}` : ""}</p>`;
+      })() : ""}
+      <p class="ej__aviso">Si sientes dolor punzante en las articulaciones, para el ejercicio.</p>
     </div>
 
     <div class="atributos">
@@ -1122,12 +1934,14 @@ function pintarEjercicio() {
           : "Aún no has registrado este ejercicio."}</p></div>`}
 
     <div class="vt">
-      <div class="vt__cab">Técnica</div>
-      <div id="lienzo" class="lienzo"></div>
-      <ul class="claves">${ej.claves.map(c => {
-        const riesgo = c.startsWith("!");
-        return `<li class="${riesgo ? "riesgo" : ""}">${esc(riesgo ? c.slice(1) : c)}</li>`;
-      }).join("")}</ul>
+      <div class="vt__cab ej__tecnicacab">
+        <span>Técnica</span>
+        <button class="ej__vermusc" data-vermusculos="1">${verMusculos ? "Ver movimiento" : "Ver músculos"}</button>
+      </div>
+      ${verMusculos ? siluetaHTML(ej) : `<div id="lienzo" class="lienzo"></div>`}
+      <div class="ej__tabs">${tabs.map(t =>
+        `<button class="ej__tab ${t.clave === tabActiva ? "on" : ""}" data-fichatab="${t.clave}">${esc(t.nombre)}</button>`).join("")}</div>
+      ${contenidoFicha(ej, tabActiva)}
     </div>
 
     ${mias.length ? `<div class="vt">
@@ -1144,7 +1958,7 @@ function pintarEjercicio() {
       </table>
     </div>` : ""}`;
 
-  if (ej.figura) {
+  if (ej.figura && !verMusculos) {
     const host = $("lienzo");
     if (host) { const fig = buildFigure(ej.figura); host.append(fig.svg); animate(fig); }
   }
@@ -1217,33 +2031,41 @@ function pintarHistorial() {
      (p. ej. veniste de ppl6 y ahora estás en ppl3). */
   const nombreDia = n => { try { return dia(n); } catch { return null; } };
 
+  /* Cardio (dia:-1) y movilidad (dia:0) no son un día de programa: no
+     tienen carga que levantar y sus "series" son bloques/posturas, no
+     repeticiones. La tabla de siempre (Carga · Series×reps) no encaja
+     ahí, así que esas sesiones se listan aparte. */
   const filaSesion = s => {
     const clave = `${s.f}|${s.dia}`;
     const d = nombreDia(s.dia);
+    const suelta = s.dia === -1 || s.dia === 0;
+    const unidad = s.dia === -1 ? "bloque" : "postura";
     const rango = s.filas[0].rango;
     const huboFallo = s.filas.some(f => f.fallado);
     const xp = s.filas.reduce((a, f) => a + (f.xp || 0), 0);
     const abierta = sesionAbierta === clave;
     return `
       <button class="sesion ${abierta ? "sesion--abierta" : ""}" data-sesion="${esc(clave)}">
-        <span class="sesion__dia">${esc(d ? d.nombre : `Día ${s.dia}`)}</span>
+        <span class="sesion__dia">${esc(d ? d.nombre : s.filas[0].nombre)}</span>
         <span class="sesion__fecha">${diaMes(s.f)}</span>
         ${rango ? `<span class="rango rango--mini" style="--rango:${COLOR_RANGO[rango]}">${rango}</span>` : ""}
-        <span class="sesion__meta">${miles(s.volumen)} kg · ${s.minutos || "—"} min${
+        <span class="sesion__meta">${suelta ? "" : `${miles(s.volumen)} kg · `}${s.minutos || "—"} min${
           huboFallo ? ` · <span class="etq-fallo">Fallo</span>` : ""}</span>
       </button>
       ${abierta ? `
         <div class="sesion__detalle">
           <table class="tabla">
-            <tr><th>Ejercicio</th><th>Carga</th><th>Series</th></tr>
+            <tr><th>Ejercicio</th>${suelta ? "" : "<th>Carga</th>"}<th>${suelta ? "Hecho" : "Series"}</th></tr>
             ${s.filas.filter(f => f.series > 0).map(f => `
               <tr>
                 <td>${esc(f.nombre)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td>
-                <td>${f.kg} kg</td>
-                <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td>
+                ${suelta ? "" : `<td>${f.kg} kg</td>`}
+                <td>${suelta
+                  ? `${f.series} ${unidad}${f.series === 1 ? "" : "s"}`
+                  : `${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}`}</td>
               </tr>`).join("")}
           </table>
-          <p class="vt__pie">${miles(xp)} XP aprox. · ${s.series} series</p>
+          <p class="vt__pie">${miles(xp)} XP aprox.${suelta ? "" : ` · ${s.series} series`}</p>
         </div>` : ""}`;
   };
 
@@ -1350,8 +2172,14 @@ function pintarPerfil() {
     .sort((a, b) => (b.ts || b.f).localeCompare(a.ts || a.f))
     .slice(0, 10);
 
+  if (recalcularNutricionSiHaceFalta()) guardar();
+  const nutri = nutricionEstado();
+  const rNutri = N.rachaNutricion(porDiaNutricionCumplido());
+
   /* Ejercicios ya registrados primero: son los que se vienen a mirar. */
   const entrenados = new Set(filas.map(f => f.ej).filter(Boolean));
+  const eqActivo = equipoActivo();
+  const cargasBarraActuales = equipo.cargasBarra(eqActivo);
   const arsenal = Object.entries(EJERCICIOS)
     .map(([clave, e]) => ({ clave, ...e, veces: filas.filter(f => f.ej === clave).length }))
     .sort((a, b) => b.veces - a.veces || a.nombre.localeCompare(b.nombre));
@@ -1377,6 +2205,179 @@ function pintarPerfil() {
       </div>
     </td></tr>`;
 
+  /* Rejilla de tarjetas (spec 010, mejora UI) en vez de una lista de
+     filas: mismo estado `panelesAbiertos`, contenido calculado aquí y
+     pintado debajo de la rejilla solo para las tarjetas abiertas. */
+  const secciones = [
+    r.mejor && { id: "racha", icono: "🔥", titulo: "Racha",
+      subtitulo: r.rota ? `Rota · mejor ${r.mejor}` : `${r.actual} sesiones · mejor ${r.mejor}`,
+      contenido: `
+        <div class="vt">
+          <p class="vt__txt">${r.rota
+            ? `Sin entrenar desde hace <b>${r.diasDesde} días</b>. La racha está a cero.`
+            : `<b>${r.actual} sesiones</b> seguidas sin dejar pasar más de ${P.DIAS_GRACIA} días.`}
+            Tu mejor marca son <b>${r.mejor}</b>.</p>
+          <p class="vt__pie">Cuentan los días entre sesiones, no los días seguidos:
+          descansar forma parte del plan, desaparecer no.</p>
+        </div>` },
+
+    { id: "nutricion", icono: "🍽", titulo: "Nutrición",
+      subtitulo: nutri.objetivo ? `${miles(nutri.objetivo.kcal)} kcal objetivo` : "Sin configurar",
+      contenido: `
+        ${corporalHTML()}
+        <div class="vt">
+          <p class="vt__txt">Edad, altura y % de grasa son opcionales. Con el % de grasa ya no hacen
+          falta las otras dos (Katch-McArdle, más preciso con buena masa muscular); sin él, hacen falta
+          edad y altura (Mifflin-St Jeor). El objetivo se recalcula solo si el peso se mueve ±3 kg.</p>
+
+          <p class="vt__pie">Sexo</p>
+          <div class="tema">
+            ${[["hombre", "Hombre"], ["mujer", "Mujer"]].map(([v, n]) =>
+              `<button class="tema__b" data-nutrisexo="${v}" aria-pressed="${nutri.perfil.sexo === v}">${n}</button>`).join("")}
+          </div>
+
+          <p class="vt__pie">Actividad</p>
+          <div class="tema" style="grid-template-columns:1fr 1fr">
+            ${N.NIVELES_ACTIVIDAD.map(a =>
+              `<button class="tema__b" data-nutriactividad="${a.clave}" aria-pressed="${nutri.perfil.actividad === a.clave}">${esc(a.nombre.split(" (")[0])}</button>`).join("")}
+          </div>
+
+          <p class="vt__pie">Objetivo</p>
+          <div class="tema">
+            ${[[-15, "Déficit"], [0, "Mantenimiento"], [10, "Superávit"]].map(([v, n]) =>
+              `<button class="tema__b" data-nutriobjetivo="${v}" aria-pressed="${nutri.perfil.objetivoPct === v}">${n}</button>`).join("")}
+          </div>
+
+          <label class="campo"><span>Edad · opcional</span>
+            <input id="nutriEdad" type="number" inputmode="numeric" min="10" max="100" placeholder="años" value="${nutri.perfil.edad ?? ""}"></label>
+          <label class="campo"><span>Altura · opcional</span>
+            <input id="nutriAltura" type="number" inputmode="numeric" min="100" max="230" placeholder="cm" value="${nutri.perfil.alturaCm ?? ""}"></label>
+          <label class="campo"><span>% de grasa corporal · opcional</span>
+            <input id="nutriGrasa" type="number" step="0.5" inputmode="decimal" min="3" max="60" placeholder="opcional" value="${nutri.perfil.grasaPct ?? ""}"></label>
+          <button class="btn" id="guardarNutriPerfil">Guardar datos</button>
+
+          ${nutri.objetivo ? `
+            <p class="vt__pie" style="margin-top:12px">Objetivo diario (con ${pesoActual()} kg)</p>
+            <div class="atributos">
+              <div class="atr"><span class="atr__cl">KCAL</span><span class="atr__val">${miles(nutri.objetivo.kcal)}</span><span class="atr__nom">Objetivo</span></div>
+              <div class="atr"><span class="atr__cl">PROT</span><span class="atr__val">${nutri.objetivo.proteina}</span><span class="atr__nom">g</span></div>
+              <div class="atr"><span class="atr__cl">GRASA</span><span class="atr__val">${nutri.objetivo.grasa}</span><span class="atr__nom">g</span></div>
+              <div class="atr"><span class="atr__cl">CARBO</span><span class="atr__val">${nutri.objetivo.carbo}</span><span class="atr__nom">g</span></div>
+            </div>
+            ${rNutri.actual ? `<p class="vt__pie">Racha de nutrición: <b>${rNutri.actual}</b> día${rNutri.actual === 1 ? "" : "s"} cumplidos seguidos (mejor: ${rNutri.mejor})</p>` : ""}
+          ` : `<p class="vt__pie" style="margin-top:12px">Faltan datos: sexo y actividad, más (edad y altura) o (% de grasa).</p>`}
+        </div>` },
+
+    { id: "equipo", icono: "🏋️", titulo: "Equipo",
+      subtitulo: `${eqActivo.barra.activo ? eqActivo.barra.kg + " kg" : "sin barra"} · ${cargasBarraActuales.length} cargas`,
+      contenido: `
+        <div class="vt">
+          <p class="vt__txt">Activa o desactiva lo que tengas a mano — lo desactivado no se ofrece en la
+          repesca ni al cambiar un ejercicio de sitio.</p>
+          <div class="equipo__cats">${equipoCategoriasHTML(eqActivo)}</div>
+
+          <p class="vt__pie" style="margin-top:12px">Barra</p>
+          <div class="corporal">
+            <button class="mini" data-equipo-barra="-1">−</button>
+            <span class="corporal__val">${eqActivo.barra.kg}<small>kg</small></span>
+            <button class="mini" data-equipo-barra="1">+</button>
+          </div>
+
+          <p class="vt__pie">Discos (bumpers)</p>
+          ${pesosEditorHTML("discos", eqActivo.discos.pesos)}
+
+          <p class="vt__pie">Fraccionales</p>
+          ${pesosEditorHTML("fraccionales", eqActivo.discos.fraccionales)}
+
+          <p class="vt__pie">Mancuernas</p>
+          ${pesosEditorHTML("mancuerna", eqActivo.mancuerna.pesos)}
+
+          <p class="vt__pie">Bandas elásticas (resistencia equivalente)</p>
+          ${pesosEditorHTML("banda", eqActivo.banda.pesos)}
+
+          <p class="vt__txt" style="margin-top:10px">${cargasBarraActuales.length
+            ? `Salen <b>${cargasBarraActuales.length} cargas</b> de barra distintas, de ${cargasBarraActuales[0].total} a ${equipo.topeBarra(eqActivo)} kg.`
+            : "Barra o discos desactivados: no hay cargas de barra que montar ahora mismo."}</p>
+          ${cargasBarraActuales.length ? `<table class="tabla">
+            <tr><th>Total</th><th>Izquierda</th><th>Derecha</th></tr>
+            ${cargasBarraActuales.map(c => `<tr><td>${c.total} kg</td><td>${c.izq.join(" + ") || "—"}</td><td>${c.der.join(" + ") || "—"}</td></tr>`).join("")}
+          </table>` : ""}
+        </div>` },
+
+    { id: "arsenal", icono: "⚔️", titulo: "Arsenal", subtitulo: `${arsenal.length} ejercicios`,
+      contenido: `
+        <div class="vt">
+          <div class="arsenal">${arsenal.map(e => {
+            const sinMaterial = !disponible(e);
+            return `
+            <button class="arma ${entrenados.has(e.clave) ? "" : "arma--nueva"} ${sinMaterial ? "arma--sinmaterial" : ""}" data-ficha="${e.clave}">
+              <span class="arma__nom">${esc(e.nombre)}</span>
+              <span class="arma__meta">${sinMaterial
+                ? "Sin material"
+                : `<i class="arma__punto" title="Con material para hacerlo"></i>${esc(e.grupo)}${e.veces ? ` · ${e.veces} ses.` : " · sin estrenar"}`}</span>
+            </button>`;
+          }).join("")}</div>
+        </div>` },
+
+    { id: "programa", icono: "📋", titulo: "Programa", subtitulo: esc(programaActivo().nombre),
+      contenido: `
+        <div class="vt">
+          <div class="arsenal">${Object.values(PROGRAMAS).map(p => `
+            <button class="arma ${p.id === programaActivo().id ? "" : "arma--nueva"}" data-programa="${p.id}">
+              <span class="arma__nom">${esc(p.nombre)}</span>
+              <span class="arma__meta">${nucleo(p).length} días · ${totalSeries(p)} series/semana</span>
+            </button>`).join("")}</div>
+          <p class="vt__pie">${esc(programaActivo().resumen)}</p>
+        </div>` },
+
+    ultimas.length && { id: "ultimas", icono: "📈", titulo: "Últimas series", subtitulo: `${ultimas.length} recientes`,
+      contenido: `
+        <div class="vt">
+          <p class="vt__pie" style="margin:0 0 8px">Toca una línea para corregirla o borrarla.</p>
+          <table class="tabla tabla--editable">
+            <tr><th>Fecha</th><th>Ejercicio</th><th>Carga</th><th>Series</th><th></th></tr>
+            ${ultimas.map(f => `
+              <tr class="${editando === f.id ? "fila--abierta" : ""}" data-fila="${f.id}">
+                <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td><td>${f.kg} kg</td>
+                <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
+              </tr>
+              ${editando === f.id ? editor(f) : ""}`).join("")}
+          </table>
+        </div>` },
+
+    { id: "aspecto", icono: "🎨", titulo: "Aspecto",
+      subtitulo: { auto: "Automático", oscuro: "Oscuro", claro: "Claro" }[temaGuardado()] ?? "Automático",
+      contenido: `
+        <div class="vt">
+          <p class="vt__txt">En automático sigue lo que tenga puesto el móvil.
+          La cabecera y el menú se quedan oscuros siempre: encima va la hora
+          y la batería del iPhone, en blanco.</p>
+          <div class="tema">
+            ${[["auto", "Automático"], ["oscuro", "Oscuro"], ["claro", "Claro"]].map(([v, n]) =>
+              `<button class="tema__b" data-tema="${v}" aria-pressed="${temaGuardado() === v}">${n}</button>`).join("")}
+          </div>
+        </div>` },
+
+    { id: "datos", icono: "💾", titulo: "Datos", subtitulo: `${filas.length} series · motor ${motor}`,
+      contenido: `
+        <div class="vt">
+          <p class="vt__txt">Motor: <code>${motor}</code> · <b>${filas.length}</b> series guardadas en este móvil.</p>
+          <p class="vt__txt">${E.copia
+            ? `Última copia: <b>${E.copia.fecha}</b>, con ${E.copia.sesiones} sesiones.`
+            : "Todavía no has guardado ninguna copia."}
+            Si borras el icono de la pantalla de inicio o limpias Safari, se va todo.</p>
+          <p class="vt__pie">${esc(OFF.ATRIBUCION_ODBL)}</p>
+          <div class="acciones">
+            <button class="btn" id="expJson">Descargar copia de seguridad</button>
+            <button class="btn" id="impJson">Añadir copia</button>
+            <button class="btn" id="expCsv">Exportar historial (CSV)</button>
+            <button class="btn" id="semana">Empezar semana ${E.semana + 1}</button>
+            <button class="btn btn--fantasma" id="cambiarFicha">Cambiar de cazador</button>
+          </div>
+          <input type="file" id="ficheroCopia" accept="application/json,.json" hidden>
+        </div>` }
+  ].filter(Boolean);
+
   $("app").innerHTML = `
     <div class="mision">
       <div class="mision__cab">Ficha de cazador</div>
@@ -1393,90 +2394,18 @@ function pintarPerfil() {
         </div>`).join("")}
     </div>
 
-    ${r.mejor ? `<div class="vt">
-      <div class="vt__cab">Racha</div>
-      <p class="vt__txt">${r.rota
-        ? `Sin entrenar desde hace <b>${r.diasDesde} días</b>. La racha está a cero.`
-        : `<b>${r.actual} sesiones</b> seguidas sin dejar pasar más de ${P.DIAS_GRACIA} días.`}
-        Tu mejor marca son <b>${r.mejor}</b>.</p>
-      <p class="vt__pie">Cuentan los días entre sesiones, no los días seguidos:
-      descansar forma parte del plan, desaparecer no.</p>
-    </div>` : ""}
-
     ${mapaHTML()}
-    ${corporalHTML()}
 
-    <div class="vt">
-      <div class="vt__cab">Arsenal</div>
-      <div class="arsenal">${arsenal.map(e => `
-        <button class="arma ${entrenados.has(e.clave) ? "" : "arma--nueva"}" data-ficha="${e.clave}">
-          <span class="arma__nom">${esc(e.nombre)}</span>
-          <span class="arma__meta">${esc(e.grupo)}${e.veces ? ` · ${e.veces} ses.` : " · sin estrenar"}</span>
-        </button>`).join("")}</div>
-    </div>
-
-    <div class="vt">
-      <div class="vt__cab">Programa</div>
-      <div class="arsenal">${Object.values(PROGRAMAS).map(p => `
-        <button class="arma ${p.id === programaActivo().id ? "" : "arma--nueva"}" data-programa="${p.id}">
-          <span class="arma__nom">${esc(p.nombre)}</span>
-          <span class="arma__meta">${nucleo(p).length} días · ${totalSeries(p)} series/semana</span>
-        </button>`).join("")}</div>
-      <p class="vt__pie">${esc(programaActivo().resumen)}</p>
-    </div>
-
-    <div class="vt">
-      <div class="vt__cab">Inventario</div>
-      <p class="vt__txt">${equipo.BARRA.nombre} de ${equipo.BARRA.kg} kg y discos de ${equipo.DISCOS.join(", ")} kg.
-      Salen <b>${equipo.CARGAS_BARRA.length} cargas</b> distintas, de ${equipo.CARGAS_BARRA[0].total} a ${equipo.TOPE_BARRA} kg.</p>
-      <table class="tabla">
-        <tr><th>Total</th><th>Izquierda</th><th>Derecha</th></tr>
-        ${equipo.CARGAS_BARRA.map(c => `<tr><td>${c.total} kg</td><td>${c.izq.join(" + ") || "—"}</td><td>${c.der.join(" + ") || "—"}</td></tr>`).join("")}
-      </table>
-      <p class="vt__pie">Para cambiar el material, edita <code>datos/equipo.js</code>: todo se recalcula solo.</p>
-    </div>
-
-    ${ultimas.length ? `<div class="vt">
-      <div class="vt__cab">Últimas series</div>
-      <p class="vt__pie" style="margin:0 0 8px">Toca una línea para corregirla o borrarla.</p>
-      <table class="tabla tabla--editable">
-        <tr><th>Fecha</th><th>Ejercicio</th><th>Carga</th><th>Series</th><th></th></tr>
-        ${ultimas.map(f => `
-          <tr class="${editando === f.id ? "fila--abierta" : ""}" data-fila="${f.id}">
-            <td>${diaMes(f.f)}</td><td>${esc(f.nombre)}${f.fallado ? ` <span class="etq-fallo">Fallado</span>` : ""}</td><td>${f.kg} kg</td>
-            <td>${f.series}×${f.reps}${EJERCICIOS[f.ej]?.unilateral ? ` /${EJERCICIOS[f.ej].unilateral}` : ""}</td><td class="tabla__ir">${editando === f.id ? "×" : "✎"}</td>
-          </tr>
-          ${editando === f.id ? editor(f) : ""}`).join("")}
-      </table>
-    </div>` : ""}
-
-    <div class="vt">
-      <div class="vt__cab">Aspecto</div>
-      <p class="vt__txt">En automático sigue lo que tenga puesto el móvil.
-      La cabecera y el menú se quedan oscuros siempre: encima va la hora
-      y la batería del iPhone, en blanco.</p>
-      <div class="tema">
-        ${[["auto", "Automático"], ["oscuro", "Oscuro"], ["claro", "Claro"]].map(([v, n]) =>
-          `<button class="tema__b" data-tema="${v}" aria-pressed="${temaGuardado() === v}">${n}</button>`).join("")}
+    ${perfilAbierto ? `
+      <div class="paneles">
+        <button class="btn btn--fantasma" data-perfil-atras="1">← Atrás</button>
+        ${secciones.find(s => s.id === perfilAbierto)?.contenido ?? ""}
       </div>
-    </div>
-
-    <div class="vt">
-      <div class="vt__cab">Datos</div>
-      <p class="vt__txt">Motor: <code>${motor}</code> · <b>${filas.length}</b> series guardadas en este móvil.</p>
-      <p class="vt__txt">${E.copia
-        ? `Última copia: <b>${E.copia.fecha}</b>, con ${E.copia.sesiones} sesiones.`
-        : "Todavía no has guardado ninguna copia."}
-        Si borras el icono de la pantalla de inicio o limpias Safari, se va todo.</p>
-      <div class="acciones">
-        <button class="btn" id="expJson">Descargar copia de seguridad</button>
-        <button class="btn" id="impJson">Añadir copia</button>
-        <button class="btn" id="expCsv">Exportar historial (CSV)</button>
-        <button class="btn" id="semana">Empezar semana ${E.semana + 1}</button>
-        <button class="btn btn--fantasma" id="cambiarFicha">Cambiar de cazador</button>
+    ` : `
+      <div class="tablero-panel">
+        ${secciones.map(s => tarjetaPanel(s.id, s.icono, s.titulo, s.subtitulo)).join("")}
       </div>
-      <input type="file" id="ficheroCopia" accept="application/json,.json" hidden>
-    </div>`;
+    `}`;
 }
 
 /* ============================================================
@@ -1607,8 +2536,11 @@ function pintar() {
   else if (vista === "historial") pintarHistorial();
   else if (vista === "perfil") pintarPerfil();
   else if (vista === "manual") pintarManual();
+  else if (vista === "menus") pintarMenus();
   else if (vista === "ejercicio") pintarEjercicio();
   else if (vista === "movilidad") pintarMovilidad();
+  else if (vista === "cardio") pintarCardio();
+  else if (vista === "nutricion") pintarNutricion();
   else if (vista === "resultado") pintarResultado();
   else if (vista === "dia") pintarDia();
   else pintarMisiones();
@@ -1778,6 +2710,68 @@ async function cerrarMovilidad() {
       hito: null,
       ejercicios: MOVILIDAD.filter(b => sesion[b.clave]).map(b => ({
         nombre: b.nombre, kg: 0, series: 1, reps: b.segundos, fallado: false, unilateral: !!b.unilateral, segundos: true
+      }))
+    };
+    vista = "resultado";
+    pintar(); arriba();
+  } finally { cerrando = false; }
+}
+
+/**
+ * Cierra el cardio suelto. Transversal, no semanal — se puede hacer
+ * cualquier día, antes o después de la sesión de fuerza, o los dos:
+ * `dia: -1` como sentinela (movilidad ya usa 0) para que sea su propia
+ * fila, sin pisar ningún día real de programa.
+ */
+async function cerrarCardio() {
+  if (cerrando) return;
+  cerrando = true;
+  try {
+    const sesion = E.sesion.cardio || {};
+    const hechos = CARDIO.filter(b => sesion[b.clave]).length;
+    if (!hechos) { aviso("No has marcado ningún bloque"); return; }
+
+    const completa = hechos === CARDIO.length;
+    const fecha = hoy(), ahora = new Date();
+    const nota = ($("notaSesion")?.value ?? E.nota ?? "").trim().slice(0, 280);
+    const brutos = E.iniciada ? Math.round((ahora - new Date(E.iniciada)) / 60000) : null;
+    const minutos = brutos != null && brutos > 0 && brutos <= 300 ? brutos : null;
+    const antes = P.estadisticas(filas);
+
+    const rango = P.rangoSesion({ pct: hechos / CARDIO.length, volumen: 0, volMedio3: null, volRecordBloque: false, huboFallo: false });
+    const fila = {
+      cazador: cazador.id, f: fecha, ts: ahora.toISOString(),
+      semana: E.semana, dia: -1, ej: "cardio", nombre: "Cardio suelto",
+      implemento: "corporal", kg: 0, carga: 0, minutos, nota, lados: 1,
+      series: hechos, reps: 0, volumen: 0, xp: completa ? XP_CARDIO : 0, rango
+    };
+    await DB.historial.anadir([fila]);
+    filas.push(fila);
+    delete E.sesion.cardio;
+    E.iniciada = null; E.nota = "";
+    mantenerPantalla(false);
+    await guardar();
+
+    const despues = P.estadisticas(filas);
+    if (despues.rango !== antes.rango) {
+      aviso(`<b>Ascenso de rango</b><span>Rango ${despues.rango}</span>`, "rango");
+    } else if (despues.nivel > antes.nivel) {
+      aviso(`<b>Subida de nivel</b><span>Nivel ${despues.nivel}</span>`, "nivel");
+    }
+
+    /* No cuenta como día núcleo — cardio no sustituye ni hace falta
+       para cerrar semana, igual que la repesca no lo hace. */
+    await revisarLogros({
+      dia: -1, volumen: 0, series: hechos, subidas: 0, completa,
+      hora: ahora.getHours(), diasParado: 0, minutos, records: 0
+    }, nucleo(programaActivo()).length);
+
+    resultadoSesion = {
+      bloque: null, nombreDia: "Cardio", lema: "Pies rápidos, manos arriba",
+      rango, fecha, volumen: 0, minutos, series: hechos, xp: completa ? XP_CARDIO : 0,
+      hito: null,
+      ejercicios: CARDIO.filter(b => sesion[b.clave]).map(b => ({
+        nombre: b.nombre, kg: 0, series: b.rondas, reps: b.segundosRonda, fallado: false, unilateral: false, segundos: true
       }))
     };
     vista = "resultado";
@@ -2179,7 +3173,7 @@ document.addEventListener("click", async e => {
     pintar(); arriba();
     return;
   }
-  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; pintar(); arriba(); return; }
+  if (b.dataset.vista) { vista = b.dataset.vista; tecnicaAbierta = null; editando = null; perfilAbierto = null; pintar(); arriba(); return; }
   if (b.dataset.semana) {
     const sem = +b.dataset.semana;
     if (semanasAbiertas.has(sem)) semanasAbiertas.delete(sem); else semanasAbiertas.add(sem);
@@ -2194,10 +3188,20 @@ document.addEventListener("click", async e => {
   if (b.dataset.ficha) {
     ejercicioActivo = b.dataset.ficha;
     puntoSel = { tipo: null, i: null };
+    fichaTab = "hacer"; verMusculos = false; musculoAbierto = null; tecnicaAbierta = null;
     vista = "ejercicio"; pintar(); arriba();
     return;
   }
   if (b.id === "irACopia") { vista = "perfil"; pintar(); arriba(); return; }
+
+  /* --- ficha de ejercicio: pestañas, silueta, glosario (spec 008) --- */
+  if (b.dataset.fichatab) { fichaTab = b.dataset.fichatab; repintarQuieto(); return; }
+  if (b.dataset.vermusculos) { verMusculos = !verMusculos; repintarQuieto(); return; }
+  if (b.dataset.musculo) {
+    musculoAbierto = musculoAbierto === b.dataset.musculo ? null : b.dataset.musculo;
+    repintarQuieto();
+    return;
+  }
 
   /* --- cambiar un ejercicio por otro del mismo patrón --- */
   if (b.dataset.cambiar) {
@@ -2245,6 +3249,302 @@ document.addEventListener("click", async e => {
     return;
   }
   if (b.dataset.tema) { ponerTema(b.dataset.tema); return; }
+
+  /* --- equipo (spec 007) --- */
+  if (b.dataset.equipoToggle) {
+    E.equipo = E.equipo || equipo.configDefecto();
+    const c = E.equipo[b.dataset.equipoToggle];
+    if (c) c.activo = !c.activo;
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.equipoBarra) {
+    E.equipo = E.equipo || equipo.configDefecto();
+    E.equipo.barra.kg = Math.max(0, E.equipo.barra.kg + (+b.dataset.equipoBarra));
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.equipoAnadir) {
+    const clave = b.dataset.equipoAnadir;
+    const campo = $(`nuevoPeso-${clave}`);
+    const v = +campo?.value;
+    if (!v || v <= 0) return;
+    E.equipo = E.equipo || equipo.configDefecto();
+    pesosArrayDe(E.equipo, clave).push(v);
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.equipoCantidad) {
+    E.equipo = E.equipo || equipo.configDefecto();
+    const arr = pesosArrayDe(E.equipo, b.dataset.equipoCantidad);
+    const valor = +b.dataset.valor;
+    if (+b.dataset.dir > 0) arr.push(valor);
+    else { const i = arr.indexOf(valor); if (i >= 0) arr.splice(i, 1); }
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+
+  /* --- perfil nutricional (bloque B, spec 010) --- */
+  if (b.dataset.nutrisexo) {
+    nutricionEstado().perfil.sexo = b.dataset.nutrisexo;
+    recalcularNutricionSiHaceFalta();
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.nutriactividad) {
+    nutricionEstado().perfil.actividad = b.dataset.nutriactividad;
+    recalcularNutricionSiHaceFalta();
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.nutriobjetivo) {
+    nutricionEstado().perfil.objetivoPct = +b.dataset.nutriobjetivo;
+    recalcularNutricionSiHaceFalta();
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.id === "guardarNutriPerfil") {
+    const perfil = nutricionEstado().perfil;
+    const edad = +($("nutriEdad")?.value || 0), altura = +($("nutriAltura")?.value || 0), grasa = +($("nutriGrasa")?.value || 0);
+    perfil.edad = edad > 0 ? edad : undefined;
+    perfil.alturaCm = altura > 0 ? altura : undefined;
+    perfil.grasaPct = grasa > 0 ? grasa : undefined;
+    nutricionEstado().pesoCalculo = null;          // fuerza el recálculo aunque el peso no se haya movido
+    recalcularNutricionSiHaceFalta();
+    await guardar();
+    repintarQuieto();
+    aviso(nutricionEstado().objetivo ? "Objetivo actualizado" : "Guardado — faltan datos para calcular el objetivo");
+    return;
+  }
+  if (b.dataset.suplementoAnadir) {
+    const nutri = nutricionEstado();
+    let nombre, clave;
+    if (b.dataset.suplementoAnadir === "manual") {
+      nombre = ($("nutriSupNombre")?.value || "").trim().slice(0, 40);
+      if (!nombre) return;
+      clave = nombre.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    } else {
+      clave = b.dataset.suplementoAnadir;
+      nombre = b.dataset.nombre || clave;
+    }
+    if (!nutri.suplementos.some(s => s.clave === clave)) nutri.suplementos.push({ clave, nombre });
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.suplementoQuitar) {
+    const nutri = nutricionEstado();
+    nutri.suplementos = nutri.suplementos.filter(s => s.clave !== b.dataset.suplementoQuitar);
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.suplementoTomado) {
+    const clave = b.dataset.suplementoTomado;
+    const nutri = nutricionEstado();
+    const s = nutri.suplementos.find(x => x.clave === clave);
+    if (!s) return;
+    const yaHoy = nutricionHoy().find(f => f.tipo === "suplemento" && f.clave === clave);
+    if (yaHoy) { await DB.nutricion.borrar(yaHoy.id); filasNutricion = filasNutricion.filter(f => f.id !== yaHoy.id); }
+    else {
+      const fila = { cazador: cazador.id, f: hoy(), ts: new Date().toISOString(), tipo: "suplemento", clave, nombre: s.nombre };
+      const id = await DB.nutricion.anadir([fila]);
+      filasNutricion.push({ ...fila, id: Array.isArray(id) ? id[0] : id });
+    }
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.comidaAnadir) {
+    const nombre = ($("nutriComNombre")?.value || "").trim().slice(0, 60);
+    const gramos = +($("nutriComGramos")?.value || 0);
+    const kcal100 = +($("nutriComKcal")?.value || 0);
+    const proteina100 = +($("nutriComProteina")?.value || 0);
+    const grasa100 = +($("nutriComGrasa")?.value || 0);
+    const carbo100 = +($("nutriComCarbo")?.value || 0);
+    if (!nombre || gramos <= 0) { aviso("Falta el nombre o los gramos"); return; }
+    const factor = gramos / 100;
+    const fila = {
+      cazador: cazador.id, f: hoy(), ts: new Date().toISOString(), tipo: "comida",
+      nombre, gramos,
+      kcal: Math.round(kcal100 * factor), proteina: Math.round(proteina100 * factor),
+      grasa: Math.round(grasa100 * factor), carbo: Math.round(carbo100 * factor)
+    };
+    const id = await DB.nutricion.anadir([fila]);
+    filasNutricion.push({ ...fila, id: Array.isArray(id) ? id[0] : id });
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.comidaBorrar) {
+    const id = +b.dataset.comidaBorrar;
+    await DB.nutricion.borrar(id);
+    filasNutricion = filasNutricion.filter(f => f.id !== id);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.comidaLibreAnadir) {
+    const nombre = ($("nutriLibreNombre")?.value || "").trim().slice(0, 60);
+    if (!nombre) return;
+    const fila = { cazador: cazador.id, f: hoy(), ts: new Date().toISOString(), tipo: "comida", nombre, sinMacros: true };
+    const id = await DB.nutricion.anadir([fila]);
+    filasNutricion.push({ ...fila, id: Array.isArray(id) ? id[0] : id });
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.menuhoyToggle) {
+    const [slot, platoClave] = b.dataset.menuhoyToggle.split("|");
+    const yaHoy = nutricionHoy().find(f => f.tipo === "comida" && f.slot === slot);
+    if (yaHoy) {
+      await DB.nutricion.borrar(yaHoy.id);
+      filasNutricion = filasNutricion.filter(f => f.id !== yaHoy.id);
+    } else {
+      const plato = nutricionEstado().platos.find(p => p.clave === platoClave);
+      if (!plato) { aviso("Ese plato ya no existe"); return; }
+      const m = N.macrosDePlato(plato.ingredientes, catalogoAlimentos());
+      const fila = {
+        cazador: cazador.id, f: hoy(), ts: new Date().toISOString(), tipo: "comida",
+        nombre: plato.nombre, kcal: m.kcal, proteina: m.proteina, grasa: m.grasa,
+        carbo: m.carbo, precio: plato.precio, platoClave: plato.clave, slot
+      };
+      const id = await DB.nutricion.anadir([fila]);
+      filasNutricion.push({ ...fila, id: Array.isArray(id) ? id[0] : id });
+    }
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.menucelda) {
+    menuCeldaAbierta = menuCeldaAbierta === b.dataset.menucelda ? null : b.dataset.menucelda;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.menudia) {
+    menuDiaAbierto = menuDiaAbierto === b.dataset.menudia ? null : b.dataset.menudia;
+    menuCeldaAbierta = null;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.nuevoplatotipo) {
+    nuevoPlatoTipo = nuevoPlatoTipo === b.dataset.nuevoplatotipo ? null : b.dataset.nuevoplatotipo;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.menuAsignar) {
+    const [dia, comida, platoClave] = b.dataset.menuAsignar.split("|");
+    const nutri = nutricionEstado();
+    if (!nutri.menuSemanal[dia]) nutri.menuSemanal[dia] = {};
+    nutri.menuSemanal[dia][comida] = platoClave;
+    menuCeldaAbierta = null;
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.menuQuitar) {
+    const [dia, comida] = b.dataset.menuQuitar.split("|");
+    const nutri = nutricionEstado();
+    if (nutri.menuSemanal[dia]) delete nutri.menuSemanal[dia][comida];
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.platoSugerido) {
+    const sugerido = N.PLATOS_SUGERIDOS.find(p => p.clave === b.dataset.platoSugerido);
+    if (!sugerido) return;
+    const nutri = nutricionEstado();
+    if (!nutri.platos.some(p => p.clave === sugerido.clave)) nutri.platos.push({ ...sugerido });
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.ingredienteQuitar !== undefined) {
+    platoDraftIngredientes.splice(+b.dataset.ingredienteQuitar, 1);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.platoGuardar) {
+    const nombre = ($("nutriPlatoNombre")?.value || "").trim().slice(0, 60);
+    const precio = +($("nutriPlatoPrecio")?.value || 0) || undefined;
+    if (!nombre) { aviso("Falta el nombre del plato"); return; }
+    if (!platoDraftIngredientes.length) { aviso("Añade al menos un ingrediente"); return; }
+    const clave = `${nombre.toLowerCase().replace(/[^a-z0-9]+/g, "")}-${Date.now().toString(36)}`;
+    nutricionEstado().platos.push({
+      clave, nombre, precio, tipoComida: nuevoPlatoTipo || undefined,
+      ingredientes: platoDraftIngredientes.map(({ alimentoId, gramos }) => ({ alimentoId, gramos }))
+    });
+    platoDraftIngredientes = [];
+    nuevoPlatoTipo = null;
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.platoRegistrar) {
+    const plato = nutricionEstado().platos.find(p => p.clave === b.dataset.platoRegistrar);
+    if (!plato) return;
+    const m = N.macrosDePlato(plato.ingredientes, catalogoAlimentos());
+    const fila = {
+      cazador: cazador.id, f: hoy(), ts: new Date().toISOString(), tipo: "comida",
+      nombre: plato.nombre, kcal: m.kcal, proteina: m.proteina, grasa: m.grasa,
+      carbo: m.carbo, precio: plato.precio
+    };
+    const id = await DB.nutricion.anadir([fila]);
+    filasNutricion.push({ ...fila, id: Array.isArray(id) ? id[0] : id });
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.platoQuitar) {
+    const nutri = nutricionEstado();
+    nutri.platos = nutri.platos.filter(p => p.clave !== b.dataset.platoQuitar);
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.buscarNombre) {
+    const q = ($("nutriBuscarNombre")?.value || "").trim().toLowerCase();
+    if (!q) return;
+    resultadosBusquedaAlimento = catalogoAlimentos().filter(a => a.nombre.toLowerCase().includes(q)).slice(0, 8);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.usarAlimento) {
+    const alimento = catalogoAlimentos().find(a => a.id === b.dataset.usarAlimento);
+    if (!alimento) return;
+    elegirAlimento(alimento);
+    return;
+  }
+  if (b.dataset.buscarCodigo) {
+    const codigo = ($("nutriCodigoBarras")?.value || "").trim();
+    if (!codigo) return;
+    await buscarYUsarAlimento(codigo);
+    return;
+  }
+  if (b.id === "escanearCodigo") { await iniciarEscaner(); return; }
+  if (b.id === "pararEscaner") { pararEscaner(); return; }
+  if (b.dataset.guiabatch) {
+    guiaBatchAbierta = !guiaBatchAbierta;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.panel) {
+    if (panelesAbiertos.has(b.dataset.panel)) panelesAbiertos.delete(b.dataset.panel);
+    else panelesAbiertos.add(b.dataset.panel);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.perfilpanel) {
+    perfilAbierto = b.dataset.perfilpanel;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.perfilAtras) {
+    perfilAbierto = null;
+    repintarQuieto();
+    return;
+  }
 
   /* --- técnica --- */
   if (b.dataset.tecnica) {
@@ -2337,6 +3637,7 @@ document.addEventListener("click", async e => {
   /* --- acciones --- */
   if (b.id === "terminar") { await terminarSesion(); return; }
   if (b.id === "terminarMovilidad") { await cerrarMovilidad(); return; }
+  if (b.id === "terminarCardio") { await cerrarCardio(); return; }
   if (b.id === "continuarResultado") { resultadoSesion = null; vista = "misiones"; pintar(); arriba(); return; }
   if (b.id === "descargarTarjeta") { await compartirTarjeta(resultadoSesion); return; }
 
@@ -2348,6 +3649,14 @@ document.addEventListener("click", async e => {
       E.iniciada = new Date().toISOString();
       mantenerPantalla(true);
     }
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.cardiobloque) {
+    const sesion = E.sesion.cardio || (E.sesion.cardio = {});
+    const clave = b.dataset.cardiobloque;
+    sesion[clave] = !sesion[clave];
     await guardar();
     repintarQuieto();
     return;
@@ -2366,7 +3675,7 @@ document.addEventListener("click", async e => {
     if (!f) return;
     const dir = +b.dataset.dir, ej = EJERCICIOS[f.ej];
     if (b.dataset.campo === "kg") {
-      const pasos = ej ? equipo.escalonDe(ej.implemento) : [];
+      const pasos = ej ? equipo.escalonDe(equipoActivo(), ej.implemento) : [];
       if (pasos.length > 1) {
         const i = Math.min(pasos.length - 1, Math.max(0, pasos.indexOf(f.kg) + dir));
         f.kg = pasos[i];
@@ -2458,6 +3767,15 @@ document.addEventListener("click", e => {
     const id = +fila.dataset.fila;
     editando = editando === id ? null : id;
     repintarQuieto();
+    return;
+  }
+
+  /* Tocar el fondo del popup de técnica lo cierra — pero solo si el
+     toque fue en el fondo de verdad, no en algo de dentro de la caja
+     (si no, cualquier toque dentro cerraría el popup al burbujear). */
+  if (e.target.classList.contains("modal") && e.target.dataset.tecnica) {
+    tecnicaAbierta = null;
+    repintarQuieto();
   }
 });
 
@@ -2471,16 +3789,18 @@ document.addEventListener("change", async e => {
     const datos = JSON.parse(await file.text());
     const posibles = await DB.copia.contarDuplicados(cazador.id, datos);
     const incluirDuplicados = posibles === 0 || confirm(
-      `${posibles} serie${posibles > 1 ? "s" : ""} del fichero parece${posibles > 1 ? "n" : ""} ya estar en el ` +
-      `historial (mismo día, ejercicio, peso, series y reps, a menos de 15 min). ¿Las añado también? Cancelar las omite.`
+      `${posibles} fila${posibles > 1 ? "s" : ""} del fichero (entreno o nutrición) parece${posibles > 1 ? "n" : ""} ya estar ` +
+      `guardada${posibles > 1 ? "s" : ""} (mismo día y datos, a menos de 15 min). ¿Las añado también? Cancelar las omite.`
     );
     const r = await DB.copia.importar(cazador.id, datos, { incluirDuplicados });
     const anadidas = typeof r === "number" ? r : r.anadidas;
     E = await DB.estado.cargar(cazador.id);
     filas = await DB.historial.lista(cazador.id);
+    filasNutricion = await DB.nutricion.lista(cazador.id);
+    alimentosDB = await DB.alimentos.listar();
     desbloqueados = (await DB.logros.lista(cazador.id)).map(l => l.logro);
     pintar();
-    aviso(`Añadido · ${anadidas} series${posibles && !incluirDuplicados ? ` · ${posibles} duplicadas omitidas` : ""}`);
+    aviso(`Añadido · ${anadidas} filas${posibles && !incluirDuplicados ? ` · ${posibles} duplicadas omitidas` : ""}`);
   } catch (err) { aviso(err.message || "No se pudo leer el archivo"); }
 });
 
@@ -2502,6 +3822,23 @@ document.addEventListener("keydown", e => {
   else pintar();
 })();
 
+/**
+ * El `aviso()` normal se borra solo a los 2 s — para una versión
+ * nueva eso es al revés de lo que hace falta: hasta que no se recarga
+ * de verdad, la app puede seguir sirviendo JS viejo sin decir nada
+ * (así se coló el `DB.nutricion.lista undefined` dos veces seguidas).
+ * Este banner se queda fijo hasta que se toca.
+ */
+function mostrarActualizacionDisponible() {
+  if ($("actualizarBanner")) return;
+  const b = document.createElement("div");
+  b.id = "actualizarBanner";
+  b.className = "actualizar-banner";
+  b.innerHTML = `<span>Hay una versión nueva de la app</span><button>Actualizar ahora</button>`;
+  b.querySelector("button").addEventListener("click", () => location.reload());
+  document.body.appendChild(b);
+}
+
 /* Service worker: que la app abra sin cobertura. */
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -2510,7 +3847,7 @@ if ("serviceWorker" in navigator) {
         const nuevo = reg.installing;
         nuevo?.addEventListener("statechange", () => {
           if (nuevo.state === "installed" && navigator.serviceWorker.controller) {
-            aviso("Hay una versión nueva · ciérrala y ábrela para actualizar");
+            mostrarActualizacionDisponible();
           }
         });
       });

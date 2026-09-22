@@ -195,7 +195,12 @@ export function atributos(st, r = { actual: 0 }) {
  */
 export function contexto({ estado, filas, ultima = null, diasNucleo = 3 }) {
   const st = estadisticas(filas);
-  const diasSemana = new Set(filas.filter(f => f.semana === estado.semana).map(f => f.dia));
+  /* El cardio suelto (dia:-1) es transversal, no un día del programa:
+     no debe contar para logros que miran "días distintos" de la
+     semana, o "semana perfecta" se dispararía sin hacer el último
+     día real. Movilidad (dia:0) sí cuenta a propósito: su cierre ya
+     pasa diasNucleo=1 cuando está completa. */
+  const diasSemana = new Set(filas.filter(f => f.semana === estado.semana && f.dia !== -1).map(f => f.dia));
   return {
     ...st,
     semana: estado.semana,

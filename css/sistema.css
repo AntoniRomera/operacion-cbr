@@ -204,7 +204,7 @@ body.puerta-abierta .top{display:none}
 .pie{flex:0 0 auto;z-index:50}
 
 .nav{
-  display:grid;grid-template-columns:repeat(4,1fr);
+  display:grid;grid-template-columns:repeat(6,1fr);
   background:var(--chromeFondo);backdrop-filter:blur(16px);
   border-top:1px solid var(--linea);
   /* Zona del indicador de inicio: reservada, ahí no puede haber botones. */
@@ -340,6 +340,10 @@ body.puerta-abierta .top{display:none}
 .arma--nueva{opacity:.55}
 .arma__nom{font-family:var(--display);font-size:14px;letter-spacing:.05em;text-transform:uppercase}
 .arma__meta{font-family:var(--mono);font-size:10px;color:var(--tenue);letter-spacing:.06em}
+.arma__punto{
+  display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;
+  background:var(--exito);box-shadow:0 0 4px rgba(52,211,153,.7);vertical-align:1px;
+}
 
 /* ---------- series de aproximación ---------- */
 .calienta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -477,7 +481,13 @@ body.puerta-abierta .top{display:none}
 .ej{
   position:relative;background:var(--panel);border:1px solid var(--linea);
   border-left:2px solid rgba(56,189,248,.55);border-radius:4px;margin:12px 12px 0;overflow:hidden;
+  padding-bottom:14px;
 }
+/* Hijos directos de .ej (fuera de .ej__cab, que ya trae su propio
+   padding): sin esto quedan pegados al borde de la tarjeta — se veía
+   sobre todo en Suplementos, con la tarjeta casi invisible sobre el
+   fondo oscuro. */
+.ej > .equipo__pesos, .ej > .equipo__anadir, .ej > .vt__pie{padding:0 14px}
 /* Lo ya registrado esta semana se queda plegado: ocupa una línea y
    recuerda que está hecho, sin tentarte a repetirlo. */
 .ej--cerrado{
@@ -497,10 +507,42 @@ body.puerta-abierta .top{display:none}
 .ej__meta{font-family:var(--mono);font-size:11.5px;color:var(--apagado);margin-top:5px;letter-spacing:.04em}
 .ej__meta em{color:var(--tenue);font-style:normal}
 .ej__musc{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-.ej__musc span{
+.ej__muscbtn{
   font-family:var(--mono);font-size:9.5px;color:var(--apagado);letter-spacing:.06em;
   border:1px solid var(--linea);border-radius:3px;padding:2px 6px;text-transform:uppercase;
+  background:none;cursor:pointer;
 }
+.ej__muscbtn.on{border-color:var(--sis);color:var(--sis);background:rgba(56,189,248,.08)}
+.ej__muscdef{margin:7px 0 0;font-family:var(--texto);font-size:12.5px;color:#BFCEE0}
+.ej__aviso{
+  margin:10px 0 0;padding:8px 10px;border:1px dashed rgba(248,113,113,.4);border-radius:4px;
+  font-family:var(--mono);font-size:10px;color:var(--peligro);letter-spacing:.03em;line-height:1.4;
+}
+
+/* ---------- pestañas de la ficha (spec 008) ---------- */
+.ej__tecnicacab{display:flex;align-items:center;justify-content:space-between}
+.ej__vermusc{
+  font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--sis);background:none;border:1px solid var(--linea);border-radius:20px;
+  padding:4px 10px;cursor:pointer;
+}
+.ej__tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}
+.ej__tab{
+  font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--apagado);background:var(--panel2);border:1px solid var(--linea);border-radius:20px;
+  padding:5px 11px;cursor:pointer;
+}
+.ej__tab.on{background:var(--sis);border-color:var(--sis);color:var(--sobreSis)}
+
+/* ---------- silueta con el músculo resaltado ---------- */
+.silueta{display:flex;flex-direction:column;align-items:center;margin-bottom:10px}
+.silueta__svg{width:100%;max-width:150px;fill:var(--linea);stroke:none}
+.silueta__zona--principal{fill:var(--sis);filter:drop-shadow(0 0 5px rgba(56,189,248,.55))}
+.silueta__zona--secundario{fill:var(--sis2);opacity:.7}
+.silueta__pie{margin:6px 0 0;font-family:var(--mono);font-size:9.5px;color:var(--tenue);letter-spacing:.04em}
+.silueta__leyenda{font-size:12px}
+.silueta__leyenda--principal{color:var(--sis)}
+.silueta__leyenda--secundario{color:var(--sis2)}
 .marca{
   display:inline-block;margin-top:9px;font-family:var(--mono);font-size:10.5px;font-weight:600;
   letter-spacing:.1em;text-transform:uppercase;background:var(--exito);color:var(--sobreExito);
@@ -528,6 +570,43 @@ body.puerta-abierta .top{display:none}
 .claves li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:2px;background:var(--sis)}
 .claves li.riesgo{color:#F3C9C7}
 .claves li.riesgo::before{background:var(--peligro);height:8px;width:2px;top:5px}
+
+/* ---------- popup de técnica (spec 008: "ver técnica" ya no despliega
+   en línea — se movía el resto de ejercicios cada vez que se abría) ---------- */
+.modal{
+  position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(3,6,12,.72);backdrop-filter:blur(3px);
+  padding:0 0 env(safe-area-inset-bottom);animation:modalFondo .15s ease-out;
+}
+.modal__caja{
+  width:100%;max-width:480px;max-height:85vh;overflow-y:auto;
+  background:var(--panel);border:1px solid var(--linea);border-radius:14px 14px 0 0;
+  animation:modalSube .18s ease-out;
+}
+.modal__cab{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 0}
+.modal__cab h3{margin:0;font-family:var(--display);font-size:17px;letter-spacing:.03em;
+               text-transform:uppercase;color:var(--tinta)}
+.modal__cerrar{
+  width:30px;height:30px;border-radius:50%;border:1px solid var(--linea);background:var(--panel2);
+  color:var(--apagado);font-size:13px;cursor:pointer;flex:0 0 auto;
+}
+.tecnica__musculo{margin:6px 14px 10px;font-family:var(--texto);font-size:12.5px;color:#BFCEE0}
+.tecnica__muscnom{color:var(--sis);font-weight:600}
+.tecnica__muscsec{display:block;margin-top:2px;font-family:var(--mono);font-size:9.5px;
+                   color:var(--tenue);letter-spacing:.05em;text-transform:uppercase}
+.tecnica__nota{margin:0 14px 0;padding:10px 12px;background:var(--panel2);border-radius:4px;
+               font-size:12.5px;color:#BFCEE0;line-height:1.4}
+.tecnica__aviso{
+  margin:10px 14px 0;padding:8px 10px;border:1px dashed rgba(248,113,113,.4);border-radius:4px;
+  font-family:var(--mono);font-size:10px;color:var(--peligro);letter-spacing:.03em;line-height:1.4;
+}
+.tecnica__masinfo{
+  display:block;width:calc(100% - 28px);margin:12px 14px 14px;padding:11px;text-align:center;
+  background:none;border:1px solid var(--sis);border-radius:6px;color:var(--sis);
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;
+}
+@keyframes modalFondo{from{opacity:0}to{opacity:1}}
+@keyframes modalSube{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 /* ---------- carga ---------- */
 .carga{padding:14px}
@@ -639,6 +718,75 @@ body.puerta-abierta .top{display:none}
 .vt__cab--toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;
   width:100%;padding:0;border:0;background:none;cursor:pointer;text-align:left}
 .sesiones{display:flex;flex-direction:column;gap:8px}
+
+/* Secuencia de paneles plegables (Perfil/Nutrición/Menús) — separado
+   de .sesiones a propósito para no tocar el espaciado del Historial,
+   que ya estaba bien. Ritmo de 16px entre bloques, no pegados. */
+.paneles{display:flex;flex-direction:column;gap:16px;margin:16px 12px 0}
+
+/* Rejilla de tarjetas de Perfil — mismo estado que .paneles/.sesion,
+   otra forma cerrada: tarjeta con icono en vez de fila de lista. */
+.tablero-panel{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:16px 12px 0}
+.tarjeta-panel{
+  background:var(--panel);border:1px solid var(--linea);border-left:2px solid var(--sis2);
+  border-radius:8px;padding:13px 12px;display:flex;flex-direction:column;gap:7px;text-align:left;
+  min-height:88px;color:var(--tinta);font-family:inherit;cursor:pointer;
+}
+.tarjeta-panel__ic{font-size:16px;line-height:1}
+.tarjeta-panel__nom{font-family:var(--display);font-size:12.5px;letter-spacing:.02em;text-transform:uppercase}
+.tarjeta-panel__meta{font-family:var(--mono);font-size:9.5px;color:var(--apagado);margin-top:auto;line-height:1.4}
+
+/* ---------- Nutrición: anillo de kcal + tarjetas de comida ---------- */
+.anillo-wrap{display:flex;align-items:center;gap:16px;margin:14px 12px 4px}
+.anillo{position:relative;width:92px;height:92px;flex:0 0 auto}
+.anillo__num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.anillo__kcal{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--tinta);font-variant-numeric:tabular-nums}
+.anillo__obj{font-family:var(--mono);font-size:8.5px;color:var(--tenue)}
+.macros-mini{display:flex;flex-direction:column;gap:7px;flex:1}
+.macro-mini{display:flex;align-items:center;gap:8px}
+.macro-mini span{font-family:var(--mono);font-size:10px;color:var(--apagado);width:56px;flex:0 0 auto}
+.macro-mini .barra{flex:1;height:5px;border-radius:3px;background:var(--linea);overflow:hidden}
+.macro-mini .barra i{display:block;height:100%;background:var(--sis2)}
+.macro-mini b{font-family:var(--mono);font-size:10px;color:var(--tinta);width:36px;text-align:right;font-variant-numeric:tabular-nums}
+
+.tablero-comida{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+.tarjeta-comida{
+  position:relative;background:var(--panel);border:1px solid var(--linea);border-left:2px solid var(--sis);
+  border-radius:8px;padding:12px 11px;text-align:left;min-height:88px;display:flex;flex-direction:column;gap:5px;
+  color:var(--tinta);font-family:inherit;cursor:pointer;
+}
+.tarjeta-comida--hecha{border-left-color:var(--exito)}
+.tarjeta-comida--vacia{border-left-color:var(--tenue);border-style:dashed}
+.tarjeta-comida__ic{position:absolute;top:10px;right:10px;font-size:14px;color:var(--exito)}
+.tarjeta-comida__slot{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--sis)}
+.tarjeta-comida--hecha .tarjeta-comida__slot{color:var(--exito)}
+.tarjeta-comida--vacia .tarjeta-comida__slot{color:var(--tenue)}
+.tarjeta-comida__nom{font-family:var(--display);font-size:13px;letter-spacing:.01em;line-height:1.25}
+.tarjeta-comida--vacia .tarjeta-comida__nom{color:var(--tenue);font-size:12px}
+.tarjeta-comida__pie{font-family:var(--mono);font-size:9.5px;color:var(--apagado);margin-top:auto}
+.tarjeta-comida--hecha .tarjeta-comida__pie{color:var(--exito)}
+.tarjeta-comida__borrar{background:none;border:0;padding:0;color:var(--tenue);font-size:16px;line-height:1;cursor:pointer}
+
+/* ---------- Menús: fila de día con puntos por comida ---------- */
+.dias{display:flex;flex-direction:column;gap:8px}
+.dia-fila{
+  background:var(--panel);border:1px solid var(--linea);border-left:2px solid var(--sis);border-radius:8px;
+  padding:11px 12px;display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;cursor:pointer;
+  color:var(--tinta);font-family:inherit;
+}
+.dia-fila--vacia{border-left-color:var(--tenue)}
+.dia-fila--hoy{border-left-color:var(--sis2)}
+.dia-fila--abierta{border-color:var(--sis)}
+.dia-fila__cab{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dia-fila__nom{font-family:var(--display);font-size:13px;letter-spacing:.02em;text-transform:uppercase}
+.dia-fila--hoy .dia-fila__nom{color:var(--sis2)}
+.dia-fila__puntos{display:flex;gap:5px;flex:0 0 auto}
+.dia-fila__puntos i{
+  width:15px;height:15px;border-radius:50%;border:1.5px solid var(--linea);
+  display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--tenue);font-style:normal;
+}
+.dia-fila__puntos i.on{background:var(--sis);border-color:var(--sis);color:var(--sobreSis)}
+.dia-fila__meta{font-family:var(--mono);font-size:10px;color:var(--tenue)}
 .sesion{
   display:flex;flex-wrap:wrap;align-items:center;gap:7px;width:100%;text-align:left;cursor:pointer;
   padding:10px 11px;background:var(--panel2);border:1px solid var(--linea);border-radius:4px;color:var(--tinta);
@@ -704,6 +852,24 @@ body.puerta-abierta .top{display:none}
 .aviso span{font-family:var(--display);font-size:17px;letter-spacing:.06em;text-transform:uppercase}
 .aviso.logro{border-color:var(--sis2);box-shadow:0 0 34px rgba(167,139,250,.42)}
 .aviso.logro b{color:var(--sis2)}
+
+/* ---------- banner de actualización ----------
+   A diferencia de .aviso, no se borra solo: hasta que no se recarga
+   de verdad, la app puede seguir sirviendo JS viejo sin avisar. */
+.actualizar-banner{
+  position:fixed;left:0;right:0;top:0;z-index:80;
+  display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+  padding:10px calc(14px + env(safe-area-inset-right)) 10px calc(14px + env(safe-area-inset-left));
+  padding-top:calc(10px + env(safe-area-inset-top));
+  background:var(--sis);color:var(--sobreSis);
+  font-family:var(--mono);font-size:12px;letter-spacing:.03em;
+  box-shadow:0 2px 14px rgba(0,0,0,.35);
+}
+.actualizar-banner button{
+  background:var(--sobreSis);color:var(--sis);border:0;border-radius:20px;
+  padding:6px 14px;font-family:var(--mono);font-size:11px;text-transform:uppercase;
+  letter-spacing:.06em;cursor:pointer;
+}
 .aviso.exito{border-color:var(--exito);box-shadow:0 0 30px rgba(52,211,153,.3)}
 .aviso.exito b{color:var(--exito)}
 .aviso.nivel{border-color:var(--sis);box-shadow:0 0 36px rgba(56,189,248,.5)}
@@ -737,6 +903,34 @@ body.puerta-abierta .top{display:none}
   font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
 }
 .tema__b[aria-pressed="true"]{background:var(--sis);border-color:var(--sis);color:var(--sobreSis)}
+
+/* ---------- equipo (spec 007) ---------- */
+.equipo__cats{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.equipo__cats .tema__b{flex:0 0 auto;padding:8px 12px}
+.equipo__pesos{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin:4px 0 2px}
+.equipo__peso{
+  display:inline-flex;align-items:center;gap:4px;padding:5px 4px 5px 10px;border-radius:20px;
+  background:var(--panel2);border:1px solid var(--linea);color:var(--tinta);
+  font-family:var(--mono);font-size:11.5px;
+}
+.mini--x{
+  width:20px;height:20px;border-radius:50%;border:0;background:none;color:var(--tenue);
+  font-size:13px;line-height:1;cursor:pointer;
+}
+.mini--x:active{color:var(--peligro)}
+.equipo__vacio{font-family:var(--mono);font-size:10.5px;color:var(--tenue)}
+.equipo__anadir{display:inline-flex;align-items:center;gap:6px}
+.equipo__anadir input{
+  width:64px;padding:6px 8px;border:1px dashed var(--linea);border-radius:20px;
+  background:none;color:var(--tinta);font-family:var(--mono);font-size:12px;
+}
+.equipo__anadir .mini{width:auto;height:auto;padding:6px 10px;border-radius:20px;font-size:11px}
+/* A propósito NO usa opacity: con .arma--nueva (sin estrenar) ya
+   apagado al .55, un segundo apagado al lado se confunde con el
+   primero. "Sin material" tiene que verse distinto, no "más apagado". */
+.arma--sinmaterial{opacity:1;border-color:rgba(248,113,113,.45);border-style:dashed;background:var(--panel2)}
+.arma--sinmaterial .arma__nom{text-decoration:line-through;color:var(--tenue)}
+.arma--sinmaterial .arma__meta{color:var(--peligro);font-weight:600}
 
 /* ---------- cambiar de ejercicio ---------- */
 .ej__btns{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
