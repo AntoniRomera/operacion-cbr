@@ -109,3 +109,28 @@ CSS balanceado (471/471). **Sin probar en el navegador** — el
 recálculo del objetivo al anotar grasa, la gráfica combinada con
 datos reales, nada de esto se ha visto en pantalla todavía. `sw.js`
 subido a `sistema-v51`.
+
+## Corrección — la gráfica de peso no aparecía con un solo apunte real
+
+Toni: "tenía un peso de 120 al principio y ahora anoté 117 y no me
+salió el gráfico". Causa: `cazador.pesoCorporal` (lo que se mete al
+dar de alta la ficha) nunca se guardaba como historial — solo servía
+de valor de partida para mostrar (`pesoActual()` caía en él si
+`E.corporal` estaba vacío, pero nunca lo escribía ahí). Efecto: el
+primer "Anotar hoy" de cualquier cazador deja un único punto en
+`E.corporal`, y la gráfica (que pide `h.length >= 2`) no aparece hasta
+el segundo día — aunque sí hubiera un peso de referencia real, el de
+alta.
+
+Arreglo: `asegurarPesoDeAlta()` (nueva, llamada al pintar
+`corporalHTML()`) rellena una vez el punto que falta — la fecha de
+alta del cazador con su `pesoCorporal` — si `E.corporal` no tiene ya
+algo en esa fecha o antes, y si la ficha no se creó hoy mismo (no hay
+"antes" que añadir en ese caso). Verificado con `osascript`: con el
+caso real de Toni (alta con 120 kg, hoy 117 kg) rellena
+`[{alta, 120}, {hoy, 117}]` y guarda una vez; en un segundo pintado no
+duplica ni vuelve a guardar; con una ficha creada hoy mismo no hace
+nada. De paso, también arregla el "Desde el primer apunte: X kg" que
+usa el mismo `h[0]`.
+
+`sw.js` subido a `sistema-v52`.

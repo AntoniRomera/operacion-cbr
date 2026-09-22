@@ -2197,7 +2197,27 @@ function mapaHTML() {
 }
 
 /* ---------- peso corporal ---------- */
+/**
+ * El peso de alta (`cazador.pesoCorporal`, el que se mete al crear la
+ * ficha) nunca se guardaba como historial — solo servía de valor de
+ * partida para mostrar. Efecto real: el primer "Anotar hoy" de cada
+ * cazador dejaba un único punto y la gráfica no aparecía hasta el
+ * segundo día, aunque sí hubiera un peso de referencia real (el de
+ * alta). Se rellena una sola vez, la primera vez que hace falta —
+ * después de eso, `E.corporal` ya tiene ese punto y esto no hace nada.
+ */
+function asegurarPesoDeAlta() {
+  const fAlta = (cazador?.creado || "").slice(0, 10);
+  if (!fAlta || !cazador.pesoCorporal || fAlta === hoy()) return;
+  E.corporal = E.corporal || [];
+  if (E.corporal.some(p => p.f <= fAlta)) return;
+  E.corporal.push({ f: fAlta, kg: cazador.pesoCorporal });
+  E.corporal.sort((a, b) => a.f.localeCompare(b.f));
+  guardar();
+}
+
 function corporalHTML() {
+  asegurarPesoDeAlta();
   const h = E.corporal || [];
   const actual = borradorPeso();
   const sinGuardar = pesoBorrador !== null && pesoBorrador !== pesoActual();
