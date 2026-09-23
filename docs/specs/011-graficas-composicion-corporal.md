@@ -134,3 +134,31 @@ nada. De paso, también arregla el "Desde el primer apunte: X kg" que
 usa el mismo `h[0]`.
 
 `sw.js` subido a `sistema-v52`.
+
+## Añadido — registro editable de peso y % de grasa
+
+Toni pidió ver el registro de pesos por fecha, por si hay que
+corregir alguno — útil además para comprobar a ojo que el respaldo
+del peso de alta (arreglo de arriba) se guardó bien.
+
+`historialCorporalHTML(historial, campo, sufijo, tipo)` (nueva, mismo
+patrón que "Últimas series" de Perfil): tabla con fecha + valor, más
+reciente primero; tocar una fila abre un editor con +/- (mismos
+límites que el stepper de turno: 30-250 kg, 3-60%) y "Borrar este
+apunte". Se llama una vez desde `corporalHTML()` y otra desde
+`grasaCorporalHTML()`, sin duplicar código entre peso y grasa — la
+clave de cada fila es `"peso:AAAA-MM-DD"` / `"grasa:AAAA-MM-DD"`
+porque los apuntes no tienen id propio, solo fecha. Editar o borrar un
+apunte de grasa fuerza el recálculo del objetivo (puede cambiar qué
+fórmula toca usar).
+
+Verificado con `osascript` contra el caso real (alta 120 kg, hoy
+117 kg): las dos filas aparecen, la más reciente primero, y la fila en
+edición muestra los controles correctos. Sin usar clases CSS nuevas
+— reutiliza `.tabla`, `.tabla--editable`, `.edit`, `.fila--abierta` ya
+existentes. `sw.js` subido a `sistema-v53`.
+
+**Sigo sin poder abrir el navegador desde aquí** (la extensión de
+Chrome se mantuvo desconectada en los intentos de hoy) — no he podido
+"abrirlo en local" de verdad como pediste, solo verificar la lógica
+por separado. Necesito que lo confirmes tú en tu móvil.

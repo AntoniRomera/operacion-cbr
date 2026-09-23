@@ -51,6 +51,7 @@ let candado = null;              // bloqueo de apagado de pantalla
 let ejercicioActivo = null;      // ficha de ejercicio abierta
 let puntoSel = { tipo: null, i: null };   // punto tocado en una gráfica
 let editando = null;             // id de la fila del historial en edición
+let registroCorporalEditando = null;   // "peso:AAAA-MM-DD" o "grasa:AAAA-MM-DD" en edición
 let semanasAbiertas = null;      // Set<número de semana> desplegadas en Historial
 let sesionAbierta = null;        // clave "fecha|día" de la sesión abierta en Historial
 let fichaTab = "hacer";          // pestaña activa en la ficha de ejercicio (spec 008)
@@ -2198,6 +2199,37 @@ function mapaHTML() {
 
 /* ---------- peso corporal ---------- */
 /**
+ * Tabla de un historial corporal (peso o % de grasa) con fecha —
+ * tocar una fila la abre para corregir el valor o borrar el apunte.
+ * Mismo patrón que "Últimas series", pero las filas no tienen id
+ * propio (son un array `{f, campo}`), así que la clave es
+ * "peso:AAAA-MM-DD" / "grasa:AAAA-MM-DD".
+ */
+function historialCorporalHTML(historial, campo, sufijo, tipo) {
+  if (!historial.length) return "";
+  return `<table class="tabla tabla--editable" style="margin-top:10px">
+      <tr><th>Fecha</th><th>${sufijo === "kg" ? "Peso" : "% grasa"}</th><th></th></tr>
+      ${[...historial].reverse().map(p => {
+        const clave = `${tipo}:${p.f}`;
+        const abierta = registroCorporalEditando === clave;
+        return `<tr class="${abierta ? "fila--abierta" : ""}" data-registrocorporal="${clave}">
+            <td>${diaMes(p.f)}</td><td>${p[campo]} ${sufijo}</td><td class="tabla__ir">${abierta ? "×" : "✎"}</td>
+          </tr>
+          ${abierta ? `<tr class="fila-edit"><td colspan="3">
+              <div class="edit">
+                <div class="edit__campo"><span>${sufijo === "kg" ? "Peso" : "% grasa"}</span>
+                  <button class="mini" data-registroajustar="${clave}" data-dir="-1">−</button>
+                  <b>${p[campo]} ${sufijo}</b>
+                  <button class="mini" data-registroajustar="${clave}" data-dir="1">+</button>
+                </div>
+                <button class="btn btn--fantasma btn--peligro" data-registroborrar="${clave}">Borrar este apunte</button>
+              </div>
+            </td></tr>` : ""}`;
+      }).join("")}
+    </table>`;
+}
+
+/**
  * El peso de alta (`cazador.pesoCorporal`, el que se mete al crear la
  * ficha) nunca se guardaba como historial — solo servía de valor de
  * partida para mostrar. Efecto real: el primer "Anotar hoy" de cada
@@ -2240,6 +2272,7 @@ function corporalHTML() {
         puntos: h.map(p => ({ f: p.f, v: p.kg })),
         color: colorDe("--exito"), sel: puntoSel.tipo === "linea" ? puntoSel.i : null
       }) : `<p class="vt__pie">Con dos apuntes en días distintos aparece la gráfica.</p>`}
+      ${historialCorporalHTML(h, "kg", "kg", "peso")}
     </div>`;
 }
 
@@ -2303,6 +2336,7 @@ function grasaCorporalHTML() {
         ? graficaComposicionHTML(cruce)
         : `<p class="vt__pie">Con un apunte de grasa y dos de peso en días distintos aparece la
            gráfica cruzada.</p>`}
+      ${historialCorporalHTML(h, "pct", "%", "grasa")}
     </div>`;
 }
 
@@ -3483,6 +3517,36 @@ document.addEventListener("click", async e => {
     await guardar();
     pintar();
     aviso(`% de grasa anotado · ${pct}%`);
+    return;
+  }
+  if (b.dataset.registrocorporal) {
+    registroCorporalEditando = registroCorporalEditando === b.dataset.registrocorporal ? null : b.dataset.registrocorporal;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.registroajustar) {
+    const i = b.dataset.registroajustar.indexOf(":");
+    const tipo = b.dataset.registroajustar.slice(0, i), f = b.dataset.registroajustar.slice(i + 1);
+    const arr = tipo === "peso" ? (E.corporal || []) : (E.grasaCorporal || []);
+    const entrada = arr.find(p => p.f === f);
+    if (!entrada) return;
+    const campo = tipo === "peso" ? "kg" : "pct";
+    const paso = 0.5 * (+b.dataset.dir);
+    const limites = tipo === "peso" ? [30, 250] : [3, 60];
+    entrada[campo] = Math.max(limites[0], Math.min(limites[1], +(entrada[campo] + paso).toFixed(1)));
+    if (tipo === "grasa") { nutricionEstado().pesoCalculo = null; recalcularNutricionSiHaceFalta(); }
+    await guardar();
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.registroborrar) {
+    const i = b.dataset.registroborrar.indexOf(":");
+    const tipo = b.dataset.registroborrar.slice(0, i), f = b.dataset.registroborrar.slice(i + 1);
+    if (tipo === "peso") E.corporal = (E.corporal || []).filter(p => p.f !== f);
+    else { E.grasaCorporal = (E.grasaCorporal || []).filter(p => p.f !== f); nutricionEstado().pesoCalculo = null; recalcularNutricionSiHaceFalta(); }
+    registroCorporalEditando = null;
+    await guardar();
+    repintarQuieto();
     return;
   }
   if (b.dataset.suplementoAnadir) {
