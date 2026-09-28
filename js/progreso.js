@@ -212,6 +212,43 @@ export function contexto({ estado, filas, ultima = null, diasNucleo = 3 }) {
   };
 }
 
+/**
+ * Desglose del tiempo de una sesión: total = efectivo + descansos +
+ * descanso extra (spec 012). Se reconstruye a partir de las marcas de
+ * cada serie (`{ts, descansoSeg}`, instante en que se marcó + el
+ * descanso programado justo después) — no hay más granularidad que
+ * esa, así que el hueco entero hasta la siguiente marca se reparte
+ * entre "descanso respetado" (hasta lo programado) y "extra" (lo que
+ * pasa de ahí); un hueco sin descanso programado detrás cuenta entero
+ * como efectivo. `marcas` tiene que venir en orden cronológico.
+ */
+export function desgloseTiempo(iniciadaISO, marcas, finTs) {
+  if (!iniciadaISO) return null;
+  const inicio = new Date(iniciadaISO).getTime();
+  let descansos = 0, extra = 0, anterior = inicio, progAnterior = 0;
+  for (const m of marcas) {
+    const hueco = Math.max(0, m.ts - anterior) / 1000;
+    if (progAnterior > 0) {
+      descansos += Math.min(hueco, progAnterior);
+      extra += Math.max(0, hueco - progAnterior);
+    }
+    anterior = m.ts;
+    progAnterior = m.descansoSeg || 0;
+  }
+  const huecoFinal = Math.max(0, finTs - anterior) / 1000;
+  if (progAnterior > 0) {
+    descansos += Math.min(huecoFinal, progAnterior);
+    extra += Math.max(0, huecoFinal - progAnterior);
+  }
+  const total = Math.max(0, (finTs - inicio) / 1000);
+  return {
+    totalSeg: Math.round(total),
+    efectivoSeg: Math.round(Math.max(0, total - descansos - extra)),
+    descansosSeg: Math.round(descansos),
+    extraSeg: Math.round(extra)
+  };
+}
+
 /** Devuelve los logros recién desbloqueados, sin repetir los que ya estaban. */
 export function evaluar(ctx, desbloqueados = []) {
   const ya = new Set(desbloqueados);

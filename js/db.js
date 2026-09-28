@@ -67,7 +67,18 @@ function motorIDB() {
     contar: (a, i, v)   => leer(a, s => (i ? s.index(i).count(v) : s.count())),
     poner:  (a, v)      => escribir(a, s => s.put(v)),
     anadir: (a, v)      => escribir(a, s => s.add(v)),
-    anadirVarios: (a, vs) => escribir(a, s => { vs.forEach(v => s.add(v)); }),
+    /* `escribir` solo lee un `.result` — con varias filas hacen falta
+       varios, uno por request. Sin esto, quien llama nunca sabe el id
+       real que asignó IndexedDB y cualquier borrado inmediato de esa
+       misma fila (en la misma sesión, antes de releer de la base)
+       falla contra un id `undefined`, sin avisar. */
+    anadirVarios: async (a, vs) => {
+      const db = await abrir();
+      const t = db.transaction(a, "readwrite");
+      const reqs = vs.map(v => t.objectStore(a).add(v));
+      await cerrar(t);
+      return reqs.map(r => r.result);
+    },
     borrar: (a, k)      => escribir(a, s => s.delete(k)),
     vaciar: (a)         => escribir(a, s => s.clear())
   };
@@ -105,7 +116,7 @@ function motorLS() {
     contar: async (a, i, v) => (await api.todos(a, i, v)).length,
     poner:  async (a, v)    => meter(a, v),
     anadir: async (a, v)    => meter(a, v),
-    anadirVarios: async (a, vs) => { vs.forEach(v => meter(a, v)); },
+    anadirVarios: async (a, vs) => vs.map(v => meter(a, v)),
     borrar: async (a, k)    => grabar(a, leer(a).filter(f => !igual(a, f, k))),
     vaciar: async (a)       => grabar(a, [])
   };

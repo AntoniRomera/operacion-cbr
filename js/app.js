@@ -13,6 +13,7 @@ import * as N from "../datos/nutricion.js";
 import { LOGO, INSIGNIAS, bloqueDe, rutasSVG } from "../datos/insignias.js";
 import { LOGROS, ORDEN_RANGO, COLOR_RANGO } from "../datos/logros.js";
 import * as equipo from "../datos/equipo.js";
+import { avatarSVG } from "../datos/avatares.js";
 import { GLOSARIO_MUSCULOS, explicacionDe } from "../datos/musculos.js";
 import * as DB from "./db.js";
 import * as P from "./progreso.js";
@@ -577,7 +578,7 @@ async function pintarPuerta() {
       <div class="fichas">${lista.map(c => {
         const actual = cambiando && c.id === cazador?.id;
         return `<button class="ficha ${actual ? "ficha--actual" : ""}" data-entrar="${c.id}">
-          <span class="ficha__ini">${esc(c.nombre.slice(0, 1).toUpperCase())}</span>
+          <span class="ficha__ini">${avatarSVG(c.nombre, 40)}</span>
           <span class="ficha__txt">
             <b>${esc(c.nombre)}</b>
             <small>${actual ? "Ficha actual" : c.pin ? "Con PIN" : "Sin PIN"} · desde ${c.creado.slice(0, 10)}</small>
@@ -850,6 +851,12 @@ function pintarResultado() {
         <div class="atr"><span class="atr__cl">SERIES</span><span class="atr__val">${r.series}</span><span class="atr__nom">Completadas</span></div>
         <div class="atr"><span class="atr__cl">XP</span><span class="atr__val">${miles(r.xp)}</span><span class="atr__nom">Ganada</span></div>
       </div>
+      ${r.desglose && r.desglose.totalSeg > 0 ? `<div class="atributos">
+        <div class="atr"><span class="atr__cl">TOTAL</span><span class="atr__val">${mmss(r.desglose.totalSeg)}</span><span class="atr__nom">Sesión</span></div>
+        <div class="atr"><span class="atr__cl">EFECT.</span><span class="atr__val">${mmss(r.desglose.efectivoSeg)}</span><span class="atr__nom">Trabajando</span></div>
+        <div class="atr"><span class="atr__cl">DESC.</span><span class="atr__val">${mmss(r.desglose.descansosSeg)}</span><span class="atr__nom">Programado</span></div>
+        <div class="atr"><span class="atr__cl">EXTRA</span><span class="atr__val">${mmss(r.desglose.extraSeg)}</span><span class="atr__nom">De más</span></div>
+      </div>` : ""}
       ${r.hito ? `<div class="resultado__hito">${esc(r.hito)}</div>` : ""}
       <ul class="resultado__lista">
         ${r.ejercicios.map(e => `<li class="${e.fallado ? "resultado__fallo" : ""}">
@@ -1555,6 +1562,26 @@ function popupTecnicaHTML(ej) {
   </div>`;
 }
 
+/** Aviso de qué montar antes de empezar — solo antes de la primera
+    serie marcada; una vez en marcha, cada ejercicio ya enseña su
+    propia carga, esto ya no aporta nada y estorba. Reutiliza
+    `equipoActivo()`, ningún cálculo de carga nuevo. */
+const NOMBRE_MATERIAL = {
+  barra: "Barra", disco: "Discos", mancuerna: "Mancuernas",
+  landmine: "Landmine", beltsquat: "Belt squat"
+};
+function materialHoyHTML(ejercicios) {
+  const eq = equipoActivo();
+  const piezas = [...new Set(ejercicios.map(e => e.implemento))]
+    .filter(i => NOMBRE_MATERIAL[i]);
+  if (!piezas.length) return "";
+  const conBarra = piezas.includes("barra") || piezas.includes("disco");
+  return `<div class="suelta">
+      <b>Prepara antes de empezar:</b> ${piezas.map(i => esc(NOMBRE_MATERIAL[i])).join(" · ")}${
+        conBarra ? ` · barra a ${eq.barra.kg} kg` : ""}.
+    </div>`;
+}
+
 function pintarDia() {
   const d = dia(diaActivo);
   const ya = registradosSemana(diaActivo);
@@ -1578,9 +1605,12 @@ function pintarDia() {
       <h2 class="mision__tit">${esc(d.nombre)}</h2>
       <div class="mision__lema">${esc(d.lema)}</div>
       <div class="mision__meta">${vivos.length} ejercicio${vivos.length === 1 ? "" : "s"} ${
-        d.suelto && vivos.length < d.ejercicios.length ? "por hacer" : ""} · ${hechas}/${total} series</div>
+        d.suelto && vivos.length < d.ejercicios.length ? "por hacer" : ""} · ${hechas}/${total} series
+        ${E.iniciada ? ` · <span id="relojSesion" class="mision__reloj">0:00</span>` : ""}</div>
       <div class="medidor">${vivos.map(e => `<i class="${serie(e).hechas.filter(Boolean).length === e.series ? "on" : ""}"></i>`).join("")}</div>
     </div>`;
+
+  if (!E.iniciada) html += materialHoyHTML(vivos);
 
   if (d.calentamiento?.length) {
     html += `<div class="vt vt--calienta">
@@ -1734,6 +1764,7 @@ function pintarDia() {
     const host = $("lienzo");
     if (ej?.figura && host) { const fig = buildFigure(ej.figura); host.append(fig.svg); animate(fig); }
   }
+  if (E.iniciada) iniciarRelojSesion();
 }
 
 /* ============================================================
@@ -2559,8 +2590,13 @@ function pintarPerfil() {
   $("app").innerHTML = `
     <div class="mision">
       <div class="mision__cab">Ficha de cazador</div>
-      <h2 class="mision__tit">${esc(cazador.nombre)}</h2>
-      <div class="mision__lema">Rango ${st.rango} · nivel ${st.nivel} · ${miles(st.xp)} XP</div>
+      <div class="mision__cazador">
+        <span class="mision__avatar">${avatarSVG(cazador.nombre, 56)}</span>
+        <div>
+          <h2 class="mision__tit">${esc(cazador.nombre)}</h2>
+          <div class="mision__lema">Rango ${st.rango} · nivel ${st.nivel} · ${miles(st.xp)} XP</div>
+        </div>
+      </div>
     </div>
 
     <div class="atributos">
@@ -2704,6 +2740,7 @@ function pintarManual() {
    PINTADO GENERAL
    ============================================================ */
 function pintar() {
+  pararRelojSesion();
   if (vista === "puerta" || !cazador) {
     $("cabecera").innerHTML = ""; $("nav").innerHTML = "";
     pintarPuerta(); return;
@@ -2730,6 +2767,29 @@ function pintar() {
    quedaba parado. Guardando la hora de fin, al volver sale la cuenta
    de verdad aunque no haya corrido nada mientras tanto. */
 let idDescanso = null, finDescanso = 0, totalDescanso = 0;
+let idRelojSesion = null;
+
+/** Reloj de sesión en vivo (vista "día") — cuánto llevas entrenando,
+    sin esperar al resultado final. Se calcula desde `E.iniciada` en
+    cada tic, así que no importa si la pestaña estuvo en segundo
+    plano: no hay deriva que recalcular, a diferencia del descanso. */
+function pararRelojSesion() {
+  if (idRelojSesion) { clearInterval(idRelojSesion); idRelojSesion = null; }
+}
+function ticRelojSesion() {
+  const el = $("relojSesion");
+  if (!el || !E?.iniciada) { pararRelojSesion(); return; }
+  const seg = Math.max(0, Math.round((Date.now() - new Date(E.iniciada)) / 1000));
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60;
+  el.textContent = h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+function iniciarRelojSesion() {
+  pararRelojSesion();
+  ticRelojSesion();
+  idRelojSesion = setInterval(ticRelojSesion, 1000);
+}
 
 function empezarDescanso(seg) {
   clearInterval(idDescanso);
@@ -3091,7 +3151,9 @@ async function cerrarSesion() {
   filas.push(...nuevas);
   tecnicaAbierta = null;
   cambioAbierto = null;
+  const desglose = P.desgloseTiempo(E.iniciada, E.marcasTiempo || [], ahora.getTime());
   E.iniciada = null;
+  E.marcasTiempo = [];
   E.nota = "";
   /* Los cambios de "solo hoy" mueren con la sesión. */
   for (const k of Object.keys(E.cambios || {})) if (E.cambios[k].temporal) delete E.cambios[k];
@@ -3125,7 +3187,7 @@ async function cerrarSesion() {
 
   resultadoSesion = {
     bloque, nombreDia: d.nombre, lema: d.lema, rango, fecha,
-    volumen, minutos, series: completadas, xp: xp + P.XP_MISION, hito,
+    volumen, minutos, series: completadas, xp: xp + P.XP_MISION, hito, desglose,
     ejercicios: nuevas.filter(f => f.series > 0).map(f => ({
       nombre: f.nombre, kg: f.kg, series: f.series, reps: f.reps,
       fallado: !!f.fallado, unilateral: EJERCICIOS[f.ej]?.unilateral,
@@ -3858,7 +3920,16 @@ document.addEventListener("click", async e => {
     /* La primera serie marcada arranca la sesión: cronómetro y pantalla. */
     if (st.hechas[k] && !E.iniciada) {
       E.iniciada = new Date().toISOString();
+      E.marcasTiempo = [];
       mantenerPantalla(true);
+    }
+    /* Una marca por serie (instante + descanso programado justo
+       después) — es lo único que hace falta para reconstruir el
+       desglose de tiempo al cerrar (spec 012). Desmarcar no quita la
+       marca: es una corrección puntual, no vale la pena perseguir
+       cuál borrar. */
+    if (st.hechas[k]) {
+      (E.marcasTiempo || (E.marcasTiempo = [])).push({ ts: Date.now(), descansoSeg: +b.dataset.descanso || 0 });
     }
     await guardar();
     repintarQuieto();

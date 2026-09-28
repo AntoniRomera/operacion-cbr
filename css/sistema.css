@@ -437,10 +437,10 @@ body.puerta-abierta .top{display:none}
 .ficha--actual{border-color:rgba(56,189,248,.55);background:linear-gradient(100deg,rgba(56,189,248,.10),var(--panel2))}
 .ficha--actual .ficha__txt small{color:var(--sis)}
 .ficha__ini{
-  flex:0 0 auto;width:40px;height:40px;display:grid;place-items:center;border-radius:8px;
-  background:rgba(56,189,248,.14);color:var(--sis);border:1px solid rgba(56,189,248,.4);
-  font-family:var(--display);font-size:20px;font-weight:700;
+  flex:0 0 auto;width:40px;height:40px;display:grid;place-items:center;border-radius:50%;
+  overflow:hidden;border:1px solid var(--linea);
 }
+.ficha__ini svg{display:block}
 .ficha__txt{display:flex;flex-direction:column;min-width:0}
 .ficha__txt b{font-family:var(--display);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .ficha__txt small{font-family:var(--mono);font-size:10.5px;color:var(--apagado)}
@@ -453,8 +453,14 @@ body.puerta-abierta .top{display:none}
 .mision__tit{font-family:var(--display);font-weight:700;font-size:31px;letter-spacing:.02em;
              text-transform:uppercase;margin:6px 0 0;line-height:1}
 .mision__lema{font-family:var(--texto);font-size:13.5px;color:var(--sis2);margin-top:5px;font-style:italic}
+.mision__cazador{display:flex;align-items:center;gap:12px;margin-top:6px}
+.mision__cazador .mision__tit,.mision__cazador .mision__lema{margin-top:0}
+.mision__avatar{flex:0 0 auto;width:56px;height:56px;border-radius:50%;overflow:hidden;
+  border:1px solid var(--linea);display:block}
+.mision__avatar svg{display:block}
 .mision__meta{font-family:var(--mono);font-size:11px;color:var(--apagado);letter-spacing:.09em;
               text-transform:uppercase;margin-top:9px}
+.mision__reloj{color:var(--sis);font-variant-numeric:tabular-nums}
 .medidor{display:flex;gap:3px;margin-top:11px}
 .medidor i{flex:1;height:3px;background:var(--linea);border-radius:2px;transition:background .2s,box-shadow .2s}
 .medidor i.on{background:var(--exito);box-shadow:0 0 8px rgba(52,211,153,.6)}
