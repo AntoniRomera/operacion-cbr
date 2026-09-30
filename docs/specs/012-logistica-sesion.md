@@ -183,3 +183,63 @@ Nada de "contenido" nuevo más allá de lo descrito arriba — sin
 tocar movilidad/cardio en el desglose de tiempo (solo el día de
 fuerza normal), sin avatar en la Puerta al dar de alta un cazador
 nuevo (solo en la lista, una vez creado).
+
+## Corrección — `hoy()` usaba UTC, no la hora local (2026-09-30)
+
+Toni: "el registro de suplementos se sigue sin reiniciar", tras el
+arreglo del `anadirVarios` de la ronda anterior. Encontrado un segundo
+fallo, independiente de aquel: `hoy()` usaba
+`new Date().toISOString().slice(0,10)` — **UTC, no la hora local**.
+En España (UTC+2 en septiembre) eso significa que durante las
+primeras ~2 horas después de medianoche local, `hoy()` seguía
+devolviendo la fecha de **ayer**. Cualquier cosa marcada en esa
+ventana (un suplemento, una comida, un peso) se guardaba con la fecha
+del día anterior — y al día siguiente de verdad, esa marca ya no
+"contaba" para lo que ese día debía enseñar sin marcar. Verificado con
+`osascript`: 30 de septiembre a las 00:30 hora local daba "2026-09-29"
+con el código viejo, "2026-09-30" con el arreglo.
+
+Cambiado a construir la fecha con `getFullYear()`/`getMonth()`/
+`getDate()` (hora local), mismo formato `AAAA-MM-DD` de siempre — no
+hace falta tocar ninguno de los 21 sitios que llaman a `hoy()`, todos
+siguen recibiendo el mismo tipo de valor.
+
+**No tengo certeza de que esto sea la causa completa** de lo que Toni
+ve — no he podido reproducir el síntoma exacto en directo. Dado el
+patrón repetido de esta sesión (arreglos correctos enmascarados por el
+service worker viejo), lo primero a comprobar antes de asumir que
+sigue roto es que el móvil real esté ya en `sistema-v55` — no solo en
+la `v54` de la corrección anterior.
+
+`sw.js` subido a `sistema-v55`.
+
+## Corrección — pantalla congelada de un día para otro (2026-09-30)
+
+Toni, con el dato exacto que faltaba: "lo puse a las 20 y hoy a las 10
+aun salian" — marcado ayer a las 20:00, seguía marcado hoy a las
+10:00. Eso descarta el bug de `hoy()`/UTC de más arriba (ninguna de
+las dos horas cae cerca de medianoche), así que no era la causa real.
+
+**Causa encontrada**: `nutricionHoy()` sí filtra bien por fecha — el
+problema no son los datos, es que **nadie vuelve a pintar**. La PWA en
+iOS, al pasar a segundo plano, normalmente no mata el proceso: lo deja
+congelado tal cual. Si Toni dejó la app abierta en "nutrición diaria"
+anoche y esta mañana simplemente la retomó (sin navegar a otra vista
+y volver, que es lo único que hoy dispara un `pintar()` nuevo), la
+pantalla seguía mostrando el HTML de anoche — suplemento marcado —
+aunque por debajo `nutricionHoy()` ya no lo contara para hoy. No es un
+bug de datos: es que el cambio de día nunca provoca un repintado.
+
+**Arreglo**: nueva variable `fechaPintada` (qué día era `hoy()` la
+última vez que se pintó, actualizada al principio de cada `pintar()`)
+y un listener de `visibilitychange` que, al recuperar el foco, repinta
+entero si `hoy()` ya no coincide con `fechaPintada`. Afecta a
+cualquier vista con datos "de hoy" (nutrición diaria es la que se
+reportó, pero el mismo repintado beneficia a cualquier otra pantalla
+con ese patrón). Verificado: sintaxis de `js/app.js` OK
+(`osascript`/`new Function`). **Sin probar en el navegador ni en el
+móvil real** — no hay forma de simular "app en segundo plano toda la
+noche" desde aquí; esto se confirma solo dejando la app abierta y
+comprobando mañana, o con Toni probándolo él mismo.
+
+`sw.js` subido a `sistema-v56`.

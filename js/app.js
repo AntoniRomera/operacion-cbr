@@ -28,6 +28,7 @@ let filasNutricion = [];     // registro de comida/suplementos ya cargado
 let alimentosDB = [];        // catálogo escaneado/manual de Toni (sin los de datos/nutricion.js:ALIMENTOS_BASE)
 let desbloqueados = [];      // ids de logros conseguidos
 let vista = "puerta";        // puerta · misiones · dia · cardio · nutricion · menus · logros · historial · perfil · manual
+let fechaPintada = null;     // qué día era hoy() la última vez que se pintó — detecta el cambio de día con la PWA en segundo plano
 let diaActivo = 1;
 let resultadoSesion = null;  // tarjeta de la última sesión cerrada
 let tecnicaAbierta = null;
@@ -109,7 +110,15 @@ const insigniaSVG = (bloque, tam, colorRango) => {
 };
 const mmss = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 const miles = n => n.toLocaleString("es-ES");
-const hoy = () => new Date().toISOString().slice(0, 10);
+/* Fecha local, no UTC — toISOString() se queda en la fecha de ayer
+   durante las primeras horas después de medianoche en cualquier huso
+   por delante de UTC (España, la mayor parte del año). Con eso, algo
+   marcado justo después de medianoche se guardaba con la fecha de
+   ayer, y al día siguiente de verdad parecía que "no se reiniciaba". */
+const hoy = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 /* Cuánto se tarda en un bloque, para decidir si cabe en el hueco que
    tienes. Cada serie son unos 40 s de trabajo más su descanso, y en los
@@ -2740,6 +2749,7 @@ function pintarManual() {
    PINTADO GENERAL
    ============================================================ */
 function pintar() {
+  fechaPintada = hoy();
   pararRelojSesion();
   if (vista === "puerta" || !cazador) {
     $("cabecera").innerHTML = ""; $("nav").innerHTML = "";
@@ -2833,6 +2843,14 @@ async function mantenerPantalla(encendida) {
 }
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && E?.iniciada) mantenerPantalla(true);
+});
+/* Si la PWA queda en segundo plano (iOS no siempre la mata: la congela
+   tal cual) y se retoma ya en otro día, la pantalla se queda con lo
+   que pintó anoche — un suplemento marcado sigue viéndose marcado
+   aunque nutricionHoy() ya no lo cuente, porque nadie ha vuelto a
+   pintar(). Al recuperar el foco, si ha cambiado el día, repintar. */
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && fechaPintada && hoy() !== fechaPintada) pintar();
 });
 
 /* ---------- cronómetro de isométricos ----------
