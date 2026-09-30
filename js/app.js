@@ -2248,8 +2248,13 @@ function historialNutricionHTML() {
 
   const filaDia = f => {
     const filasDia = porDia.get(f);
+    const comidas = filasDia.filter(x => x.tipo === "comida");
     const totales = N.totalesDia(filasDia);
-    const cumplido = nutri.objetivo ? N.diaCumplido(totales, nutri.objetivo) : null;
+    /* Un día con solo suplementos (sin ninguna comida registrada) no es
+       un día "fuera de objetivo" — es un día sin datos de comida. Sin
+       esto, diaCumplido() lo compara contra 0 kcal y sale en rojo como
+       si se hubiera comido mal, cuando en realidad no se apuntó nada. */
+    const cumplido = (nutri.objetivo && comidas.length) ? N.diaCumplido(totales, nutri.objetivo) : null;
     const suples = filasDia.filter(x => x.tipo === "suplemento");
     const abierta = diaNutriAbierto === f;
     return `
@@ -2259,11 +2264,11 @@ function historialNutricionHTML() {
           <span class="dnutri__fecha">${diaMes(f)}</span>
           ${cumplido === null ? "" : `<span class="dnutri__estado ${cumplido ? "dnutri__estado--ok" : "dnutri__estado--no"}">${cumplido ? "✓ cumplido" : "✗ fuera"}</span>`}
         </div>
-        <span class="dnutri__meta">${miles(totales.kcal)}${nutri.objetivo ? ` / ${miles(nutri.objetivo.kcal)}` : ""} kcal</span>
+        <span class="dnutri__meta">${comidas.length ? `${miles(totales.kcal)}${nutri.objetivo ? ` / ${miles(nutri.objetivo.kcal)}` : ""} kcal` : "Sin comida registrada"}</span>
       </button>
       ${abierta ? `
         <div class="dnutri__detalle">
-          ${nutri.objetivo ? `
+          ${!comidas.length ? `<p class="vt__pie">Solo suplementos — ninguna comida registrada ese día.</p>` : nutri.objetivo ? `
             <div class="anillo-wrap" style="margin:0">
               ${anilloKcalHTML(totales.kcal, nutri.objetivo.kcal)}
               <div class="macros-mini">

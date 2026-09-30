@@ -80,3 +80,18 @@ orden descendente, cumplido `true`/`false` correctos, racha calculada bien.
 **Sin probar en el navegador ni en el móvil real** — ninguna captura de
 pantalla, ningún tap real sobre el anillo o las pestañas. `sw.js` subido a
 `sistema-v57`.
+
+## Corrección — días con solo suplementos salían en rojo (2026-09-30)
+
+Toni: "puede que como no registro comidas y solo suplementos no funcione".
+Sí funcionaba (el día aparecía), pero mal: `N.diaCumplido()` comparaba 0 kcal
+contra el objetivo y lo marcaba **✗ fuera de objetivo** — como si se hubiera
+comido mal, cuando en realidad no había ninguna comida registrada ese día.
+
+Arreglado: si el día no tiene ninguna fila `tipo:"comida"`, el estado queda
+neutro (sin ✓/✗, sin borde de color), la fila dice "Sin comida registrada" en
+vez de "0 / 2400 kcal", y el detalle explica "Solo suplementos — ninguna
+comida registrada ese día" en lugar del anillo. Verificado con `osascript`:
+un día con una única fila de suplemento da `cumplido: null` (antes `false`).
+
+`sw.js` subido a `sistema-v58`.
