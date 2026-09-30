@@ -56,6 +56,9 @@ let editando = null;             // id de la fila del historial en edición
 let registroCorporalEditando = null;   // "peso:AAAA-MM-DD" o "grasa:AAAA-MM-DD" en edición
 let semanasAbiertas = null;      // Set<número de semana> desplegadas en Historial
 let sesionAbierta = null;        // clave "fecha|día" de la sesión abierta en Historial
+let subvistaHistorial = "entreno";   // "entreno" · "nutricion" — pestañas del Historial
+let semanasNutriAbiertas = null;     // Set<semana ISO> desplegadas en Historial → Nutrición
+let diaNutriAbierto = null;          // fecha (AAAA-MM-DD) con el detalle de macros abierto
 let fichaTab = "hacer";          // pestaña activa en la ficha de ejercicio (spec 008)
 let verMusculos = false;         // false = muñeco animado, true = silueta resaltada
 let musculoAbierto = null;       // qué chip de músculo se está explicando ahora mismo
@@ -630,6 +633,9 @@ async function entrar(id) {
   cambiando = false;
   semanasAbiertas = null;
   sesionAbierta = null;
+  subvistaHistorial = "entreno";
+  semanasNutriAbiertas = null;
+  diaNutriAbierto = null;
   await revisarLogros();
   pintar();
 }
@@ -1787,6 +1793,16 @@ function pintarDia() {
    ============================================================ */
 const GRAF = { w: 320, h: 132, izq: 34, der: 48, arr: 14, aba: 24 };
 const diaMes = f => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
+/* Semana ISO-8601 de una fecha "AAAA-MM-DD" — agrupa el historial de
+   nutrición por semana natural (lunes-domingo), distinto del número
+   de semana del historial de entreno (ese es un contador del programa,
+   no del calendario: no tienen por qué coincidir). */
+const semanaISO = f => {
+  const d = new Date(`${f}T00:00:00`);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const inicioAno = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil(((d - inicioAno) / 86400000 + 1) / 7);
+};
 
 function grafica({ nombre, puntos, tipo, color, unidad, sel }) {
   const { w, h, izq, der, arr, aba } = GRAF;
@@ -2178,7 +2194,11 @@ function pintarHistorial() {
       <h2 class="mision__tit">${sesiones.length} sesión${sesiones.length === 1 ? "" : "es"}</h2>
       <div class="mision__lema">Todo lo entrenado, semana a semana</div>
     </div>
-    ${semanas.map(sem => {
+    <div class="pestanas">
+      <button class="pestana" aria-current="${subvistaHistorial === "entreno" ? "true" : "false"}" data-tabhistorial="entreno">Entreno</button>
+      <button class="pestana" aria-current="${subvistaHistorial === "nutricion" ? "true" : "false"}" data-tabhistorial="nutricion">Nutrición</button>
+    </div>
+    ${subvistaHistorial === "nutricion" ? historialNutricionHTML() : semanas.map(sem => {
       const lista = porSemana.get(sem);
       const abierta = semanasAbiertas.has(sem);
       return `
@@ -2188,6 +2208,90 @@ function pintarHistorial() {
           <span>${lista.length} sesión${lista.length === 1 ? "" : "es"} ${abierta ? "▾" : "▸"}</span>
         </button>
         ${abierta ? `<div class="sesiones">${lista.map(filaSesion).join("")}</div>` : ""}
+      </div>`;
+    }).join("")}`;
+}
+
+/** El nombre de fila del día ("Lunes"), a partir de la clave que
+    devuelve `N.diaSemanaDe()` — no hay que reinventar el calendario,
+    ya está en `DIAS_SEMANA`. */
+const nombreDiaSemana = f => N.DIAS_SEMANA.find(d => d.clave === N.diaSemanaDe(f))?.nombre || "";
+
+/** Historial → pestaña Nutrición: mismo patrón de semanas plegables
+    que Entreno, pero por semana natural (lunes-domingo) — comer no
+    tiene "día de programa" que agrupe las fechas — y con el mismo
+    anillo de kcal + barras de macros que ya pinta la Nutrición de
+    hoy, reutilizados tal cual (`anilloKcalHTML`/`macroMiniHTML`) en
+    vez de duplicar el dibujo. */
+function historialNutricionHTML() {
+  const nutri = nutricionEstado();
+  if (!filasNutricion.length) {
+    return `<div class="vt"><p class="vt__txt">Todavía no hay ningún día de nutrición registrado.</p></div>`;
+  }
+
+  const porDia = new Map();
+  for (const f of filasNutricion) {
+    if (!porDia.has(f.f)) porDia.set(f.f, []);
+    porDia.get(f.f).push(f);
+  }
+  const porSemana = new Map();
+  for (const f of porDia.keys()) {
+    const sem = semanaISO(f);
+    if (!porSemana.has(sem)) porSemana.set(sem, []);
+    porSemana.get(sem).push(f);
+  }
+  for (const lista of porSemana.values()) lista.sort((a, b) => b.localeCompare(a));
+  const semanas = [...porSemana.keys()].sort((a, b) => b - a);
+  if (!semanasNutriAbiertas) semanasNutriAbiertas = new Set([semanas[0]]);
+
+  const racha = N.rachaNutricion(porDiaNutricionCumplido());
+
+  const filaDia = f => {
+    const filasDia = porDia.get(f);
+    const totales = N.totalesDia(filasDia);
+    const cumplido = nutri.objetivo ? N.diaCumplido(totales, nutri.objetivo) : null;
+    const suples = filasDia.filter(x => x.tipo === "suplemento");
+    const abierta = diaNutriAbierto === f;
+    return `
+      <button class="dnutri ${cumplido === true ? "dnutri--ok" : cumplido === false ? "dnutri--no" : ""} ${abierta ? "dnutri--abierta" : ""}" data-dianutri="${f}">
+        <div class="dnutri__cab">
+          <span class="dnutri__dia">${esc(nombreDiaSemana(f))}</span>
+          <span class="dnutri__fecha">${diaMes(f)}</span>
+          ${cumplido === null ? "" : `<span class="dnutri__estado ${cumplido ? "dnutri__estado--ok" : "dnutri__estado--no"}">${cumplido ? "✓ cumplido" : "✗ fuera"}</span>`}
+        </div>
+        <span class="dnutri__meta">${miles(totales.kcal)}${nutri.objetivo ? ` / ${miles(nutri.objetivo.kcal)}` : ""} kcal</span>
+      </button>
+      ${abierta ? `
+        <div class="dnutri__detalle">
+          ${nutri.objetivo ? `
+            <div class="anillo-wrap" style="margin:0">
+              ${anilloKcalHTML(totales.kcal, nutri.objetivo.kcal)}
+              <div class="macros-mini">
+                ${macroMiniHTML("Proteína", totales.proteina, nutri.objetivo.proteina, "g")}
+                ${macroMiniHTML("Grasa", totales.grasa, nutri.objetivo.grasa, "g")}
+                ${macroMiniHTML("Carbos", totales.carbo, nutri.objetivo.carbo, "g")}
+              </div>
+            </div>` : `<p class="vt__pie">Sin objetivo calculado todavía — solo cuentan las kcal.</p>`}
+          <div class="dnutri__suples">
+            ${suples.length
+              ? suples.map(s => `<span class="chip"><i>✓</i>${esc(s.nombre)}</span>`).join("")
+              : `<span class="chip chip--vacio">Sin suplementos</span>`}
+          </div>
+        </div>` : ""}`;
+  };
+
+  return `
+    <div class="racha-nutri">Racha nutricional: <b>${racha.actual} día${racha.actual === 1 ? "" : "s"}</b> · mejor ${racha.mejor}</div>
+    ${semanas.map(sem => {
+      const lista = porSemana.get(sem);
+      const abierta = semanasNutriAbiertas.has(sem);
+      return `
+      <div class="vt">
+        <button class="vt__cab vt__cab--toggle" data-semananutri="${sem}">
+          <span>Semana ${sem}</span>
+          <span>${lista.length} día${lista.length === 1 ? "" : "s"} ${abierta ? "▾" : "▸"}</span>
+        </button>
+        ${abierta ? `<div class="sesiones">${lista.map(filaDia).join("")}</div>` : ""}
       </div>`;
     }).join("")}`;
 }
@@ -3435,6 +3539,22 @@ document.addEventListener("click", async e => {
   if (b.dataset.semana) {
     const sem = +b.dataset.semana;
     if (semanasAbiertas.has(sem)) semanasAbiertas.delete(sem); else semanasAbiertas.add(sem);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.tabhistorial) {
+    subvistaHistorial = b.dataset.tabhistorial;
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.semananutri) {
+    const sem = +b.dataset.semananutri;
+    if (semanasNutriAbiertas.has(sem)) semanasNutriAbiertas.delete(sem); else semanasNutriAbiertas.add(sem);
+    repintarQuieto();
+    return;
+  }
+  if (b.dataset.dianutri) {
+    diaNutriAbierto = diaNutriAbierto === b.dataset.dianutri ? null : b.dataset.dianutri;
     repintarQuieto();
     return;
   }

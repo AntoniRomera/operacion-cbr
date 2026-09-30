@@ -847,6 +847,40 @@ body.puerta-abierta .top{display:none}
 .sesion__meta{width:100%;font-family:var(--mono);font-size:10.5px;color:var(--tenue);letter-spacing:.03em}
 .sesion__detalle{padding:8px 2px 2px}
 
+/* ---------- historial · pestañas Entreno/Nutrición ---------- */
+.pestanas{display:flex;gap:8px;margin:16px 12px 0}
+.pestana{flex:1;padding:9px 0;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--apagado);background:var(--panel2);border:1px solid var(--linea);
+  border-radius:4px;cursor:pointer}
+.pestana[aria-current="true"]{color:var(--sis);border-color:var(--sis);background:var(--panel);
+  box-shadow:inset 0 0 14px rgba(56,189,248,.14)}
+
+.racha-nutri{font-family:var(--mono);font-size:10.5px;color:var(--tenue);letter-spacing:.05em;margin:14px 12px 0}
+.racha-nutri b{color:var(--sis2)}
+
+.dnutri{
+  display:block;width:100%;text-align:left;cursor:pointer;padding:10px 11px 10px 9px;
+  background:var(--panel2);border:1px solid var(--linea);border-left:3px solid var(--linea);border-radius:4px;
+  color:var(--tinta);font-family:inherit;
+}
+.dnutri:active,.dnutri--abierta{border-color:var(--sis)}
+.dnutri--abierta{border-left-color:var(--sis)}
+.dnutri--ok{border-left-color:var(--exito)}
+.dnutri--no{border-left-color:var(--peligro)}
+.dnutri__cab{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.dnutri__dia{font-family:var(--display);font-size:13px;letter-spacing:.04em;text-transform:uppercase;flex:1 1 auto}
+.dnutri__fecha{font-family:var(--mono);font-size:11px;color:var(--tenue)}
+.dnutri__estado{font-family:var(--mono);font-size:10px;letter-spacing:.04em}
+.dnutri__estado--ok{color:var(--exito)}
+.dnutri__estado--no{color:var(--peligro)}
+.dnutri__meta{display:block;font-family:var(--mono);font-size:10.5px;color:var(--tenue);letter-spacing:.03em;margin-top:2px}
+.dnutri__detalle{padding:10px 2px 2px}
+.dnutri__suples{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--panel);
+  border:1px solid var(--linea);border-radius:12px;font-family:var(--mono);font-size:9px;color:var(--apagado)}
+.chip i{color:var(--exito);font-style:normal}
+.chip--vacio{color:var(--tenue);border-style:dashed}
+
 /* ---------- tablas y manual ---------- */
 .tabla{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin:4px 0 0}
 .tabla th{text-align:left;color:var(--apagado);font-weight:500;padding:6px 5px;
