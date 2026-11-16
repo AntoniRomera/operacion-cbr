@@ -481,7 +481,16 @@ const pesoDe = ej => {
       guardar();
     }
   }
-  return E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
+  const kg = E.pesos[ej.clave] ?? ej.kgInicial ?? 0;
+  if (ej.implemento === "corporal") return kg;
+  /* El `kgInicial` del catálogo es genérico — no sabe qué discos
+     tienes montados — y el inventario de Equipo puede haber cambiado
+     desde la última vez. Si el peso guardado no es un escalón que de
+     verdad se pueda montar, `pasos.indexOf(kg)` da -1 en el botón +/-:
+     en vez de subir, manda el peso al escalón más bajo y parece que
+     no hace nada. Ajustarlo aquí al escalón real más cercano. */
+  const pasos = escalon(ej);
+  return pasos.length && !pasos.includes(kg) ? masCercano(pasos, kg) : kg;
 };
 
 /** kg que propone el motor de progresión al completar el tope de reps. */

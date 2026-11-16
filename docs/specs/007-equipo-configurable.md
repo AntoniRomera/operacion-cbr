@@ -116,3 +116,29 @@ músculos.
   bloque de trabajo): mismo caso, corregido pero sin ver en pantalla.
 
 `sw.js` subido a `sistema-v30`.
+
+## Corrección — el botón "+" de peso no subía en sentadilla (2026-11-16)
+
+Toni: "en sentadilla le doy al + y no hace nada, o al menos no sube
+visualmente". Causa: `pesoDe(ej)` devolvía el peso guardado (o, a
+falta de uno, el `kgInicial` genérico del catálogo — 40 kg en
+sentadilla) **sin comprobar que ese kg fuera un escalón real montable**
+con el equipo configurado. El botón `data-peso` busca el peso actual
+dentro de `pasos` (`pasos.indexOf(kg)`); si ese kg no está ahí — porque
+`kgInicial` no encaja con los discos reales, o el inventario cambió
+desde la última vez — `indexOf` da `-1`, y sumar 1 para el "+" aterriza
+en `pasos[0]`: el escalón **más bajo**, no uno más alto. Si el peso
+mostrado ya coincidía por casualidad con ese mínimo, el botón no movía
+nada en absoluto.
+
+Arreglado en `pesoDe()`: si el kg guardado no es un escalón válido,
+se ajusta al escalón real más cercano (`masCercano`, ya usado para las
+sugerencias de "sube/baja a X kg") antes de devolverlo — así tanto la
+pantalla como el botón +/- parten siempre de un valor que sí existe en
+`pasos`. Verificado con `osascript`: con un `kgInicial` de 40 y unos
+escalones reales `[34,38,42,46,50]` (40 no es ninguno), antes el "+"
+mandaba a 34 (bajaba); con el arreglo, `pesoDe` devuelve 38 y el "+" sí
+sube a 42, luego a 46.
+
+**Sin probar en el navegador ni en el móvil real.** `sw.js` subido a
+`sistema-v59`.
